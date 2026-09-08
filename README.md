@@ -45,6 +45,8 @@ python3 scripts/triad.py review-packet ../my-modeling-project
 
 `triad.py` 只自动处理文件搬运、状态汇总、台账格式和审核材料打包；它不会替人批准核心建模决定、关闭失败或冻结提交。
 
+进入逐问建模前，为每个子问题复制 [科学风险卡模板](templates/scientific_risk_card.md)。六个维度（假设、数据、识别性、敏感性、基线、越界/外推）逐项标记 `APPLICABLE`、`NOT_APPLICABLE` 或 `REVIEW_REQUIRED`，并写测试计划、准出条件和项目内证据。未知不能由代理默选为不适用；风险卡动态生成和自动消费目前【未验证】。
+
 阶段控制命令还包括 `record-review`、`record-failure`、`close-failure`、`close-gate`、`freeze` 和 `validate`。它们只接受 `schemas/` 中的规范 Gate ID；审核 PASS 必须带项目内证据和独立上下文，冻结必须有所有前置门关闭、无开放 blocker 和实质性人工确认。状态文件是派生视图，事件追加保存在 `logs/events.jsonl`。
 
 论文候选稿完成后，先用用户提供的同方向优秀论文做多维对比，并生成可在浏览器中勾选和备注的 HTML 自检页：
@@ -59,6 +61,14 @@ python3 scripts/paper_review.py --paper paper/draft.md \
 
 报告比较篇幅、结构、图表/公式/引用密度和验证线索，并标记套话、重复句式、强结论证据不足及人类贡献缺口。它不输出 AI 百分比，也不自动改写论文；用户决定修改项后，必须回到论文门复核。
 
+论文中的关键数字和结论还应登记为 Claim → evidence → run 链【单轮验证】：
+
+```sh
+python3 scripts/claim_check.py ../my-modeling-project
+```
+
+检查器会拒绝缺少证据文件、引用不存在或失败运行、以及运行没有声明生成的证据；它发现的是证据断链和伪造风险，不证明数学命题本身为真。格式见 `templates/claim_evidence_run.jsonl` 和 `references/claim_evidence_run.md`。
+
 然后打开 [bootstrap prompt](templates/prompts/bootstrap.md)，填入题面附件、项目路径、三角色、时钟和保护范围，再交给 Codex，并明确引用本目录的 `SKILL.md`。这一步可快速启动；环境探针及编译实际耗时不保证 30 秒。
 
 无需先安装 28 个技能也可使用本协议；建模能力可由已有技能或项目工具完成。要作为个人 Skill 安装，可把整个目录放到个人 skills 目录，或通过已有技能安装工具安装发布仓库；克隆本身不代表已经安装。
@@ -68,7 +78,7 @@ python3 scripts/paper_review.py --paper paper/draft.md \
 `scripts/` 中的工具支持 Python 3.10+，运行和参数处理以标准库为基础。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 与 `paper_review.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
 
 - 环境探针只在指定输出目录生成最小测试图、中文 PDF 和报告；成功不等于比赛代码可复现。
-- `schemas/`：规范 Gate、事件、审核、失败和运行记录的版本化合同。
+- `schemas/`：规范 Gate、事件、审核、失败、运行和 Claim 证据链的版本化合同。
 - SHA-256 清单需要可信的已知指纹；不要先给待测文件生成新指纹再以匹配证明正确。
 - 匿名扫描需要补充真实学校、姓名、赛区等待排查词；默认模式只找可疑线索，人工仍需检查图片、元数据与误报。
 
@@ -104,9 +114,10 @@ python3 scripts/paper_review.py --paper paper/draft.md \
 ## 文件导航与发布状态
 
 - [SKILL.md](SKILL.md)：代理入口与职责。
-- [阶段门](references/stage_gates.md)、[历史论文风格档案](references/historical_style_profile.md)、[论文多维对比](references/paper_comparison.md)、[写作风险自查](references/ai_authorship_review.md)、[图表视觉规范](references/visual_style.md)、[五条铁律](references/five_rules.md)、[人工门 SLA](references/human_gate_sla.md)：执行协议。
+- [阶段门](references/stage_gates.md)、[科学风险卡](references/scientific_risk_cards.md)、[历史论文风格档案](references/historical_style_profile.md)、[论文多维对比](references/paper_comparison.md)、[写作风险自查](references/ai_authorship_review.md)、[图表视觉规范](references/visual_style.md)、[五条铁律](references/five_rules.md)、[人工门 SLA](references/human_gate_sla.md)：执行协议。
 - [官方合规](references/official_compliance.md)：2026 原文来源与逐条核对。
 - [陷阱](references/pitfalls.md) 与 [两个案例](examples/benchmark_02_case_study.md)：真实事件教训。
 - `templates/`：可复制的决策、交接、披露和启动提示；模板占位字段需要填写，不能作为已发生事实入账。
+- `schemas/risk_card.schema.json` 与 `templates/scientific_risk_card.md`：逐子问题科学风险登记；风险来源有两轮历史证据，动态机制仍【未验证】。
 
 当前交付为公开发布候选。现有 `benchmark_01/...`、`benchmark_02/...` 仅是原始证据相对定位标识；原始 Benchmark 产物未打包，不要把这些标识解释成公开下载链接。发布前需由维护者选择 LICENSE、确认仓库 URL，并核查历史证据公开许可。
