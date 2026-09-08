@@ -35,6 +35,7 @@ LOG_FILES = (
     "time_log.jsonl",
     "events.jsonl",
     "reviews.jsonl",
+    "claims.jsonl",
 )
 GATES = ("START", "TOPIC", "DEFINITION", "ROUTE", "MODEL", "PAPER", "LAYOUT", "COMPLIANCE", "FREEZE")
 
