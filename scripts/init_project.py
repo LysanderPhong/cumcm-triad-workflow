@@ -33,7 +33,10 @@ LOG_FILES = (
     "route_changes.jsonl",
     "run_log.jsonl",
     "time_log.jsonl",
+    "events.jsonl",
+    "reviews.jsonl",
 )
+GATES = ("START", "TOPIC", "DEFINITION", "ROUTE", "MODEL", "PAPER", "LAYOUT", "COMPLIANCE", "FREEZE")
 
 
 def main() -> int:
@@ -72,10 +75,22 @@ def main() -> int:
             "project_state": "INITIALIZED",
             "current_gate": "START",
             "gate_status": "WAITING_HUMAN",
+            "review_status": "NOT_RUN",
+            "open_blockers": 0,
             "created_by": "cumcm-triad-workflow.init_project",
             "notes": "Replace placeholders through decision cards; no gate is pre-approved by initialization.",
         }
         (target / "project_state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        profile = {
+            "schema_version": "1.0", "mode": "REPLACE_WITH_TRAINING_OR_FORMAL",
+            "year": None, "group": None, "problem": None, "rules_ref": None,
+            "clock_start": None, "clock_deadline": None,
+            "allowed_sources": [], "forbidden_sources": [],
+            "roles": {"human_decider": None, "executor": None, "independent_reviewer": None},
+            "status": "NEEDS_HUMAN_INPUT",
+        }
+        (target / "project_profile.json").write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+        (target / "planning" / "gate_registry.json").write_text(json.dumps({"schema_version": "1.0", "gates": list(GATES)}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     except (OSError, ValueError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 2
