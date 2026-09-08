@@ -27,13 +27,31 @@ python3 scripts/doctor.py --output-dir ../triad-doctor
 python3 scripts/init_project.py ../my-modeling-project
 ```
 
+也可以用总控入口一次完成初始化和题面导入：
+
+```sh
+python3 scripts/triad.py start ../my-modeling-project --input problem.pdf attachments/
+python3 scripts/triad.py status ../my-modeling-project
+```
+
+总控入口还可把一条人工决定写入正确台账，并生成独立审核包：
+
+```sh
+python3 scripts/triad.py record-human ../my-modeling-project --gate-id G1 --gate-class CORE_MODELING \
+  --selected "线性基线" --contribution "我先用可解释基线检验变量关系，再决定是否增加非线性模型。" \
+  --rationale "先保留可比较的基准。"
+python3 scripts/triad.py review-packet ../my-modeling-project
+```
+
+`triad.py` 只自动处理文件搬运、状态汇总、台账格式和审核材料打包；它不会替人批准核心建模决定、关闭失败或冻结提交。
+
 然后打开 [bootstrap prompt](templates/prompts/bootstrap.md)，填入题面附件、项目路径、三角色、时钟和保护范围，再交给 Codex，并明确引用本目录的 `SKILL.md`。这一步可快速启动；环境探针及编译实际耗时不保证 30 秒。
 
 无需先安装 28 个技能也可使用本协议；建模能力可由已有技能或项目工具完成。要作为个人 Skill 安装，可把整个目录放到个人 skills 目录，或通过已有技能安装工具安装发布仓库；克隆本身不代表已经安装。
 
 ## 脚本使用约定
 
-三个脚本支持 Python 3.10+，脚本运行和参数处理使用标准库。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
+四个脚本支持 Python 3.10+，脚本运行和参数处理使用标准库。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
 
 - 环境探针只在指定输出目录生成最小测试图、中文 PDF 和报告；成功不等于比赛代码可复现。
 - SHA-256 清单需要可信的已知指纹；不要先给待测文件生成新指纹再以匹配证明正确。
