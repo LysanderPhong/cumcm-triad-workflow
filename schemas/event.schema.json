@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Append-only triad event",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_type", "timestamp"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"enum": ["inputs_ingested", "human_decision", "review_verdict", "failure_opened", "failure_closed", "gate_closed", "freeze"]},
+    "timestamp": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}
