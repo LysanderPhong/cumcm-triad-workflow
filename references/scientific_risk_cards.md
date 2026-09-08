@@ -38,9 +38,9 @@
 
 每项证据都使用项目内相对路径或 `run_id`；绝对路径、自由文本分数和“脚本存在”不能作为唯一依据。方法改变、输入替换、指标口径变化或发现新 blocker 时，旧卡追加新版本并通过 `supersedes` 回指，相关结果和论文主张回到 `REVIEW_REQUIRED`，直到重新测试。
 
-## 与现有 28-skill 的接口
+## 与阶段执行技能的接口
 
-风险卡不复制 `data-auditor-cleaner`、`method-selector`、`robustness-checker` 等技能的算法步骤，而是把它们的输出接到同一风险合同：数据审计提供 `DATA` 证据，方法筛选提供 `BASELINE` 与停止条件，稳健性实验提供 `SENSITIVITY`/`BOUNDARY_EXTRAPOLATION` 证据，人类在真实判断点批准适用性和主张范围。`triad` 负责权责、状态和独立性；28-skill 负责产物和专业执行。
+风险卡不复制数据审计、方法筛选、稳健性检验等阶段技能的算法步骤，而是把它们的输出接到同一风险合同：数据审计提供 `DATA` 证据，方法筛选提供 `BASELINE` 与停止条件，稳健性实验提供 `SENSITIVITY`/`BOUNDARY_EXTRAPOLATION` 证据，人类在真实判断点批准适用性和主张范围。`triad` 负责权责、状态和独立性；阶段技能（使用者自备或让执行代理直接完成）负责产物和专业执行。
 
 ## 诚实边界
 
