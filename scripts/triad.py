@@ -8,7 +8,7 @@ a submission on the user's behalf.
 Examples:
   python scripts/triad.py start my-project --input problem.pdf data/
   python scripts/triad.py status my-project
-  python scripts/triad.py record-human my-project --gate-id G1 --gate-class CORE_MODELING \
+  python scripts/triad.py record-human my-project --gate-id START --gate-class CORE_MODELING \
       --selected "主方法" --contribution "我选择..." --rationale "..."
   python scripts/triad.py review-packet my-project
 
@@ -25,15 +25,20 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 
 GATES = ("START", "TOPIC", "DEFINITION", "ROUTE", "MODEL", "PAPER", "LAYOUT", "COMPLIANCE", "FREEZE")
+GATE_SET = set(GATES)
 LOG_FILES = (
     "human_decisions.jsonl", "autonomous_decisions.jsonl", "failures.jsonl",
     "ai_usage.jsonl", "route_changes.jsonl", "run_log.jsonl", "time_log.jsonl",
+    "reviews.jsonl",
 )
 CORE_CLASSES = {"CORE_MODELING"}
+EVENT_LOG = "events.jsonl"
+TERMINAL_REVIEW_VERDICTS = {"PASS", "REJECT", "BLOCK", "ESCALATE"}
 
 
 def now() -> str:
@@ -72,20 +77,77 @@ def append_jsonl(path: Path, row: dict) -> None:
         handle.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
-def input_files(inputs: list[str], project: Path) -> list[Path]:
-    found: list[Path] = []
+def event_ids(project: Path) -> set[str]:
+    ids: set[str] = set()
+    path = project / "logs" / EVENT_LOG
+    if not path.exists():
+        return ids
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"malformed event at logs/{EVENT_LOG}:{number}: {exc}") from exc
+        identifier = row.get("event_id")
+        if not isinstance(identifier, str) or not identifier:
+            raise ValueError(f"event at logs/{EVENT_LOG}:{number} has no event_id")
+        if identifier in ids:
+            raise ValueError(f"duplicate event_id: {identifier}")
+        ids.add(identifier)
+    return ids
+
+
+def append_event(project: Path, row: dict) -> None:
+    identifier = row.get("event_id")
+    if not isinstance(identifier, str) or not identifier:
+        raise ValueError("event_id is required")
+    if identifier in event_ids(project):
+        raise ValueError(f"duplicate event_id: {identifier}")
+    append_jsonl(project / "logs" / EVENT_LOG, row)
+
+
+def validate_gate(gate: str) -> str:
+    gate = gate.strip().upper()
+    if gate not in GATE_SET:
+        raise ValueError(f"unknown gate_id {gate!r}; use one of: {', '.join(GATES)}")
+    return gate
+
+
+def validate_relative_refs(project: Path, refs: list[str]) -> None:
+    for ref in refs:
+        path = Path(ref)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"evidence_ref must be a project-relative path: {ref}")
+        if not (project / path).is_file():
+            raise ValueError(f"evidence_ref does not exist inside project: {ref}")
+
+
+def input_files(inputs: list[str], project: Path) -> list[tuple[Path, str]]:
+    found: list[tuple[Path, str]] = []
     for raw in inputs:
-        source = Path(raw).expanduser().resolve()
+        raw_path = Path(raw).expanduser()
+        if raw_path.is_symlink():
+            raise ValueError(f"input symlink is not accepted: {raw_path}")
+        source = raw_path.resolve()
         if not source.exists():
             raise ValueError(f"input does not exist: {source}")
         if source == project or project in source.parents:
             raise ValueError("input must not be the project itself or inside it")
+        if source.is_symlink():
+            raise ValueError(f"input symlink is not accepted: {source}")
         if source.is_file():
-            found.append(source)
+            found.append((source, source.name))
         else:
-            found.extend(item for item in sorted(source.rglob("*")) if item.is_file())
-    unique = {item: None for item in found}
-    return list(unique)
+            for item in sorted(source.rglob("*")):
+                if item.is_symlink():
+                    raise ValueError(f"input directory contains symlink: {item}")
+                if item.is_file():
+                    found.append((item, f"{source.name}/{item.relative_to(source).as_posix()}"))
+    unique: dict[Path, str] = {}
+    for item, relative in found:
+        unique.setdefault(item, relative)
+    return [(item, relative) for item, relative in unique.items()]
 
 
 def ingest(project: Path, inputs: list[str]) -> dict:
@@ -93,36 +155,56 @@ def ingest(project: Path, inputs: list[str]) -> dict:
     if not files:
         raise ValueError("no files found in input")
     raw_dir = project / "raw"
-    destinations = [raw_dir / source.name for source in files]
-    if len({path.name for path in destinations}) != len(destinations):
-        raise ValueError("input contains duplicate filenames; rename them before ingest to preserve traceability")
+    destinations = [raw_dir / relative for _, relative in files]
+    folded = [path.as_posix().casefold() for path in destinations]
+    if len(set(folded)) != len(folded):
+        raise ValueError("input contains duplicate paths (case-insensitive); rename them before ingest")
     existing = [path.name for path in destinations if path.exists()]
     if existing:
         raise ValueError(f"refusing to overwrite raw input: {', '.join(existing)}")
     manifest_rows = []
-    for source, destination in zip(files, destinations):
-        shutil.copy2(source, destination)
-        manifest_rows.append({
-            "relative_path": destination.relative_to(project).as_posix(),
-            "source_name": source.name,
-            "kind": source.suffix.lower().lstrip(".") or "no_extension",
-            "bytes": destination.stat().st_size,
-            "readable": True,
-            "ingested_at": now(),
-        })
+    staging = Path(tempfile.mkdtemp(prefix=".ingest-staging-", dir=project))
+    try:
+        for source, relative in files:
+            staged = staging / relative
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, staged)
+        for (_, relative), destination in zip(files, destinations):
+            staged = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            staged.replace(destination)
+            manifest_rows.append({
+                "relative_path": destination.relative_to(project).as_posix(),
+                "source_name": Path(relative).name,
+                "source_relative": relative,
+                "kind": destination.suffix.lower().lstrip(".") or "no_extension",
+                "bytes": destination.stat().st_size,
+                "readable": True,
+                "ingested_at": now(),
+            })
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    manifest_path = project / "planning" / "input_manifest.json"
+    previous = []
+    if manifest_path.exists():
+        try:
+            previous = json.loads(manifest_path.read_text(encoding="utf-8")).get("files", [])
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"existing input manifest is malformed; refusing ingest: {exc}") from exc
     manifest = {
         "schema_version": "1.0",
         "generated_at": now(),
         "source_policy": "copied by explicit user command; no hashes generated",
-        "files": manifest_rows,
+        "files": previous + manifest_rows,
     }
-    (project / "planning" / "input_manifest.json").write_text(
+    manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     state = read_state(project)
     state.update({"project_state": "INPUTS_INGESTED", "current_gate": "START", "gate_status": "WAITING_HUMAN", "input_count": len(manifest_rows)})
     write_state(project, state)
-    return {"status": "INGESTED", "count": len(manifest_rows), "manifest": "planning/input_manifest.json"}
+    append_event(project, {"schema_version": "1.0", "event_id": f"INGEST-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}", "event_type": "inputs_ingested", "timestamp": now(), "count": len(manifest_rows)})
+    return {"status": "INGESTED", "count": len(manifest_rows), "total_count": len(manifest["files"]), "manifest": "planning/input_manifest.json"}
 
 
 def start(args: argparse.Namespace) -> dict:
@@ -164,6 +246,7 @@ def status(project: Path) -> dict:
 
 def record_human(args: argparse.Namespace) -> dict:
     project = require_project(args.project)
+    gate_id = validate_gate(args.gate_id)
     gate_class = args.gate_class.upper()
     contribution = args.contribution.strip()
     selected = args.selected.strip()
@@ -171,33 +254,43 @@ def record_human(args: argparse.Namespace) -> dict:
         raise ValueError("CORE_MODELING requires a concise substantive human contribution, not only A/B/C or agreement")
     if not selected or not args.rationale.strip():
         raise ValueError("selected and rationale are required")
-    event_id = args.event_id or f"HD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    evidence = args.evidence or []
+    validate_relative_refs(project, evidence)
+    event_id = args.event_id or f"HD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     row = {
         "schema_version": "1.0", "event_id": event_id, "timestamp": now(),
-        "gate_id": args.gate_id, "gate_class": gate_class, "decision_owner": "human",
+        "gate_id": gate_id, "gate_class": gate_class, "decision_owner": "human",
         "proposal_source": args.proposal_source, "options_considered": args.option or [],
         "selected_option": selected, "human_contribution": contribution,
         "rationale": args.rationale.strip(), "status": args.status.upper(),
-        "supersedes": args.supersedes, "evidence_refs": args.evidence or [],
+        "supersedes": args.supersedes, "evidence_refs": evidence,
     }
+    append_event(project, {**row, "event_type": "human_decision"})
     append_jsonl(project / "logs" / "human_decisions.jsonl", row)
     state = read_state(project)
-    state.update({"project_state": "HUMAN_DECISION_RECORDED", "current_gate": args.gate_id, "gate_status": "APPROVED" if row["status"] == "APPROVED" else "WAITING_HUMAN", "last_human_decision_id": event_id})
+    state.update({"project_state": "HUMAN_DECISION_RECORDED", "current_gate": gate_id, "gate_status": "HUMAN_APPROVED_PENDING_REVIEW" if row["status"] == "APPROVED" else "WAITING_HUMAN", "human_decision_status": row["status"], "last_human_decision_id": event_id})
     write_state(project, state)
     return {"status": "RECORDED", "event_id": event_id, "gate_status": state["gate_status"]}
 
 
 def review_packet(args: argparse.Namespace) -> dict:
     project = require_project(args.project)
-    output = project / "reviews" / (args.output or "review_packet.zip")
+    output = (project / "reviews" / (args.output or f"{args.mode}.zip")).resolve()
+    reviews_dir = (project / "reviews").resolve()
+    if reviews_dir not in output.parents:
+        raise ValueError("review packet output must remain inside project/reviews")
     if output.exists():
         raise ValueError(f"refusing to overwrite review packet: {output}")
-    include_roots = ("project_state.json", "planning", "logs", "code", "results", "paper", "compliance")
+    include_roots = ("project_state.json", "project_profile.json", "planning", "raw", "code", "results", "paper", "compliance")
+    if args.mode == "provenance-audit":
+        include_roots = include_roots + ("logs",)
     added = 0
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
         for root in include_roots:
             source = project / root
+            if source.is_symlink():
+                raise ValueError(f"refusing symlink in review packet: {source.relative_to(project)}")
             if source.is_file():
                 archive.write(source, arcname=root)
                 added += 1
@@ -205,12 +298,162 @@ def review_packet(args: argparse.Namespace) -> dict:
             if not source.is_dir():
                 continue
             for item in sorted(source.rglob("*")):
+                if item.is_symlink():
+                    raise ValueError(f"refusing symlink in review packet: {item.relative_to(project)}")
                 if not item.is_file() or item.name.startswith(".") or item == output:
                     continue
                 archive.write(item, arcname=item.relative_to(project).as_posix())
                 added += 1
-        archive.writestr("REVIEW_PACKET_README.txt", "Generated by triad.py. Run anonym_scan.py and human review before sharing.\n")
-    return {"status": "CREATED", "packet": str(output), "files": added, "warning": "packet may contain sensitive inputs; anonymize before external sharing"}
+        archive.writestr("REVIEW_PACKET_README.txt", f"Generated by triad.py mode={args.mode}. Run anonym_scan.py and human review before sharing.\n")
+    return {"status": "CREATED", "mode": args.mode, "packet": str(output), "files": added, "warning": "packet may contain sensitive inputs; anonymize before external sharing"}
+
+
+def log_rows(project: Path, filename: str) -> list[dict]:
+    path = project / "logs" / filename
+    if not path.exists():
+        return []
+    rows = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"malformed {filename}:{number}: {exc}") from exc
+        if not isinstance(row, dict):
+            raise ValueError(f"{filename}:{number} must be a JSON object")
+        rows.append(row)
+    return rows
+
+
+def record_review(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    gate_id = validate_gate(args.gate_id)
+    verdict = args.verdict.upper()
+    if verdict not in TERMINAL_REVIEW_VERDICTS:
+        raise ValueError("verdict must be PASS, REJECT, BLOCK, or ESCALATE")
+    if not args.context_id.strip():
+        raise ValueError("independent reviewer context_id is required")
+    evidence = args.evidence or []
+    validate_relative_refs(project, evidence)
+    if verdict == "PASS" and not evidence:
+        raise ValueError("review PASS requires at least one project-relative evidence_ref")
+    event_id = args.event_id or f"RV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "review_verdict", "timestamp": now(), "gate_id": gate_id, "verdict": verdict, "reviewer_context_id": args.context_id.strip(), "same_context_as_executor": False, "evidence_refs": evidence, "notes": args.notes.strip()}
+    append_event(project, row)
+    append_jsonl(project / "logs" / "reviews.jsonl", row)
+    state = read_state(project)
+    state.update({"review_status": verdict, "review_gate": gate_id, "last_review_id": event_id, "gate_status": "REVIEWED" if verdict == "PASS" else "BLOCKED"})
+    write_state(project, state)
+    return {"status": "RECORDED", "verdict": verdict, "event_id": event_id, "gate_status": state["gate_status"]}
+
+
+def record_failure(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    gate_id = validate_gate(args.gate_id)
+    severity = args.severity.upper()
+    if severity not in {"CRITICAL", "MAJOR", "MINOR"}:
+        raise ValueError("severity must be CRITICAL, MAJOR, or MINOR")
+    failure_id = args.failure_id or f"F-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    existing = {row.get("failure_id") for row in log_rows(project, "failures.jsonl")}
+    if failure_id in existing:
+        raise ValueError(f"duplicate failure_id: {failure_id}")
+    refs = args.evidence or []
+    validate_relative_refs(project, refs)
+    row = {"schema_version": "1.0", "event_id": f"FE-{failure_id}", "event_type": "failure_opened", "failure_id": failure_id, "timestamp": now(), "gate_id": gate_id, "severity": severity, "failure_type": args.failure_type.upper(), "description": args.description.strip(), "status": "OPEN", "evidence_refs": refs}
+    append_event(project, row)
+    append_jsonl(project / "logs" / "failures.jsonl", row)
+    state = read_state(project)
+    state.update({"project_state": "BLOCKED_BY_FAILURE", "gate_status": "BLOCKED", "open_blockers": int(state.get("open_blockers", 0)) + 1, "last_failure_id": failure_id})
+    write_state(project, state)
+    return {"status": "OPEN", "failure_id": failure_id, "gate_status": "BLOCKED"}
+
+
+def close_failure(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    rows = log_rows(project, "failures.jsonl")
+    matches = [row for row in rows if row.get("failure_id") == args.failure_id]
+    if not matches:
+        raise ValueError(f"failure_id not found: {args.failure_id}")
+    if matches[-1].get("status") != "OPEN":
+        raise ValueError("failure is not OPEN; history is append-only")
+    refs = args.evidence or []
+    validate_relative_refs(project, refs)
+    event_id = args.event_id or f"FC-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "failure_closed", "failure_id": args.failure_id, "timestamp": now(), "status": args.status.upper(), "repair_ref": args.repair_ref, "verification_refs": refs, "notes": args.notes.strip()}
+    append_event(project, row)
+    append_jsonl(project / "logs" / "failures.jsonl", {**row, "failure_type": "CLOSURE"})
+    state = read_state(project)
+    state["open_blockers"] = max(0, int(state.get("open_blockers", 0)) - 1)
+    state["gate_status"] = "WAITING_REVIEW" if state["open_blockers"] == 0 else "BLOCKED"
+    write_state(project, state)
+    return {"status": row["status"], "failure_id": args.failure_id, "open_blockers": state["open_blockers"]}
+
+
+def close_gate(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    gate_id = validate_gate(args.gate_id)
+    state = read_state(project)
+    if state.get("current_gate") != gate_id:
+        raise ValueError(f"current gate is {state.get('current_gate')!r}; cannot close {gate_id}")
+    decisions = [row for row in log_rows(project, "human_decisions.jsonl") if row.get("gate_id") == gate_id and row.get("status") == "APPROVED"]
+    reviews = [row for row in log_rows(project, "reviews.jsonl") if row.get("gate_id") == gate_id and row.get("verdict") == "PASS"]
+    if not decisions:
+        raise ValueError("gate has no APPROVED human decision")
+    if not reviews:
+        raise ValueError("gate has no independent reviewer PASS")
+    if int(state.get("open_blockers", 0)):
+        raise ValueError("open blockers remain")
+    event_id = args.event_id or f"GC-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "gate_closed", "timestamp": now(), "gate_id": gate_id, "human_decision_ref": decisions[-1].get("event_id"), "review_ref": reviews[-1].get("event_id")}
+    append_event(project, row)
+    state["gate_status"] = "CLOSED"
+    state.setdefault("closed_gates", []).append(gate_id)
+    write_state(project, state)
+    return {"status": "CLOSED", "gate_id": gate_id, "event_id": event_id}
+
+
+def freeze(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    state = read_state(project)
+    missing = [gate for gate in GATES[:-1] if gate not in state.get("closed_gates", [])]
+    if missing:
+        raise ValueError(f"cannot freeze; gates not closed: {', '.join(missing)}")
+    if int(state.get("open_blockers", 0)):
+        raise ValueError("cannot freeze with open blockers")
+    confirmation = args.confirmation.strip()
+    if len(confirmation) < 12:
+        raise ValueError("freeze requires a substantive human confirmation")
+    event_id = args.event_id or f"FR-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "freeze", "timestamp": now(), "version": args.version, "human_confirmation": confirmation, "status": "FROZEN"}
+    append_event(project, row)
+    state.update({"project_state": "FROZEN", "current_gate": "FREEZE", "gate_status": "FROZEN", "frozen_version": args.version, "freeze_event_id": event_id})
+    write_state(project, state)
+    return {"status": "FROZEN", "version": args.version, "event_id": event_id}
+
+
+def validate_project(project: Path) -> dict:
+    errors: list[str] = []
+    try:
+        state = read_state(project)
+    except ValueError as exc:
+        return {"status": "INVALID", "errors": [str(exc)]}
+    try:
+        ids = event_ids(project)
+    except ValueError as exc:
+        errors.append(str(exc)); ids = set()
+    if state.get("current_gate") not in GATE_SET:
+        errors.append(f"unknown current_gate: {state.get('current_gate')}")
+    for filename in ("human_decisions.jsonl", "reviews.jsonl", "failures.jsonl"):
+        try:
+            for row in log_rows(project, filename):
+                if "gate_id" in row and row["gate_id"] not in GATE_SET:
+                    errors.append(f"unknown gate_id in {filename}: {row['gate_id']}")
+        except ValueError as exc:
+            errors.append(str(exc))
+    if not (project / "logs" / EVENT_LOG).exists():
+        errors.append("missing logs/events.jsonl; project cannot be replay-validated")
+    return {"status": "VALID" if not errors else "INVALID", "errors": errors, "event_count": len(ids), "current_gate": state.get("current_gate"), "gate_status": state.get("gate_status"), "open_blockers": state.get("open_blockers", 0)}
 
 
 def main() -> int:
@@ -242,9 +485,51 @@ def main() -> int:
     p.add_argument("--supersedes")
     p.add_argument("--event-id")
     p.set_defaults(handler=record_human)
+    p = sub.add_parser("record-review", help="append an independent reviewer verdict")
+    p.add_argument("project")
+    p.add_argument("--gate-id", required=True)
+    p.add_argument("--verdict", required=True, choices=tuple(sorted(TERMINAL_REVIEW_VERDICTS)))
+    p.add_argument("--context-id", required=True)
+    p.add_argument("--evidence", action="append")
+    p.add_argument("--notes", default="")
+    p.add_argument("--event-id")
+    p.set_defaults(handler=record_review)
+    p = sub.add_parser("record-failure", help="append an open failure blocker")
+    p.add_argument("project")
+    p.add_argument("--gate-id", required=True)
+    p.add_argument("--severity", required=True)
+    p.add_argument("--failure-type", default="MECHANICAL")
+    p.add_argument("--description", required=True)
+    p.add_argument("--evidence", action="append")
+    p.add_argument("--failure-id")
+    p.set_defaults(handler=record_failure)
+    p = sub.add_parser("close-failure", help="append a verified failure closure")
+    p.add_argument("project")
+    p.add_argument("failure_id")
+    p.add_argument("--repair-ref", required=True)
+    p.add_argument("--evidence", action="append", required=True)
+    p.add_argument("--status", default="FIXED", choices=("FIXED", "ACCEPTED_RISK"))
+    p.add_argument("--notes", default="")
+    p.add_argument("--event-id")
+    p.set_defaults(handler=close_failure)
+    p = sub.add_parser("close-gate", help="close a gate only after human approval, reviewer PASS, and no blockers")
+    p.add_argument("project")
+    p.add_argument("--gate-id", required=True)
+    p.add_argument("--event-id")
+    p.set_defaults(handler=close_gate)
+    p = sub.add_parser("freeze", help="freeze only after all gates and explicit human confirmation")
+    p.add_argument("project")
+    p.add_argument("--version", required=True)
+    p.add_argument("--confirmation", required=True)
+    p.add_argument("--event-id")
+    p.set_defaults(handler=freeze)
+    p = sub.add_parser("validate", help="validate event/log schemas and fail-closed state")
+    p.add_argument("project")
+    p.set_defaults(handler=lambda a: validate_project(require_project(a.project)))
     p = sub.add_parser("review-packet", help="assemble a zip for an independent reviewer")
     p.add_argument("project")
     p.add_argument("--output", help="relative filename under reviews/ (default review_packet.zip)")
+    p.add_argument("--mode", choices=("blind-review", "provenance-audit"), default="blind-review")
     p.set_defaults(handler=review_packet)
     args = parser.parse_args()
     if sys.version_info < (3, 10):
