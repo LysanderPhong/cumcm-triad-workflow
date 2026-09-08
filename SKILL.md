@@ -47,13 +47,15 @@ metadata:
 
 ## 启动与交接
 
-1. 在空目录运行 `python scripts/init_project.py path/to/project`，或按 [bootstrap prompt](templates/prompts/bootstrap.md) 填入已有项目。初始化器只创建标准目录和空台账，不复制 Benchmark 数据，也不覆盖已有生成路径。
+1. 在空目录运行 `python scripts/triad.py start path/to/project --input problem.pdf attachments/`，即可初始化并导入题面；也可单独运行 `init_project.py`。随后用 `triad.py status` 查看下一步。初始化器只创建标准目录和空台账，不复制 Benchmark 数据，也不覆盖已有生成路径。
 2. 填入题面附件、角色、时钟和已有授权。没有上下文不要假定任何 Gate 已过；核心门必须取得实质人类贡献。
 3. 使用 Python 3.10+ 运行 `python scripts/doctor.py --help`，在独立输出目录做环境探针。失败报告不能冒充环境就绪，也不自动授权安装依赖。
 4. 用 [决策卡](templates/decision_card.md) 和 [人工门提示](templates/prompts/gate_human.md) 准备一个真实判断点。人工答案进入项目 `logs/human_decisions.jsonl`；机械决定或已批准回退才使用 [自主决定模板](templates/autonomous_decision.jsonl)。
 5. 执行后提交 [交接报告](templates/handoff_report.md)，由隔离审核任务采用 [独立审核提示](templates/prompts/independent_review.md)。审核员只能 PASS、REJECT、BLOCK 或 ESCALATE；REJECT/BLOCK 后由执行者生成新版本，审核员重新审核，不能自修生产结果后自证 PASS。
 6. 从开局按阶段、用途和影响范围保存真实 AI 交互，使用 [AI 使用详情模板](templates/ai_usage_disclosure.md) 和 `templates/logs/ai_usage.jsonl` 分组记录；高影响或代表性事件保留精确原始引用，不要求复制每条聊天。提交前读 [2026 官方合规清单](references/official_compliance.md)，核对当年官方原文与实际 PDF/支撑包。
 7. 冻结时分别记录官方提交资格、科学证据准备、奖项评估、可选安全检查。任一状态的 PASS 不传递给其他状态；本 Skill 的脚本也不会替人签发或自动发布。
+
+`scripts/triad.py` 只编排可逆的机械工作：导入文件、汇总状态、追加人工决定和生成审核包。它不替人批准核心模型、关闭失败或冻结提交；审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。
 
 ## 工具和证据边界
 
