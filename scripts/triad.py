@@ -231,14 +231,25 @@ def status(project: Path) -> dict:
         counts[name] = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()) if path.exists() else 0
     current = state.get("current_gate", "UNKNOWN")
     gate_status = state.get("gate_status", "UNKNOWN")
-    if gate_status in {"WAITING_HUMAN", "BLOCKED"}:
-        next_action = "human_decision_required"
-    elif current in GATES:
-        next_action = "prepare_or_run_current_gate"
+    closed = state.get("closed_gates", [])
+    next_gate = next((gate for gate in GATES if gate not in closed), None)
+    open_failures = [
+        {"failure_id": row.get("failure_id"), "gate_id": row.get("gate_id"), "severity": row.get("severity")}
+        for row in log_rows(project, "failures.jsonl") if row.get("status") == "OPEN"
+    ]
+    if gate_status == "FROZEN":
+        next_action = "none_project_frozen"
+    elif open_failures:
+        next_action = f"close_failures_first:{','.join(str(f['failure_id']) for f in open_failures)}"
+    elif gate_status in {"WAITING_HUMAN", "BLOCKED"}:
+        next_action = f"human_decision_required@{current}"
+    elif next_gate:
+        next_action = f"prepare_gate:{next_gate}"
     else:
         next_action = "inspect_project_state"
     return {
         "project": str(project), "current_gate": current, "gate_status": gate_status,
+        "closed_gates": closed, "next_gate": next_gate, "open_failures": open_failures,
         "input_count": len(json.loads(manifest.read_text(encoding="utf-8")).get("files", [])) if manifest.exists() else 0,
         "log_counts": counts, "next_action": next_action,
     }
@@ -339,13 +350,20 @@ def record_review(args: argparse.Namespace) -> dict:
     if verdict == "PASS" and not evidence:
         raise ValueError("review PASS requires at least one project-relative evidence_ref")
     event_id = args.event_id or f"RV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "review_verdict", "timestamp": now(), "gate_id": gate_id, "verdict": verdict, "reviewer_context_id": args.context_id.strip(), "same_context_as_executor": False, "evidence_refs": evidence, "notes": args.notes.strip()}
+    self_review = bool(args.self_review_only)
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "review_verdict", "timestamp": now(), "gate_id": gate_id, "verdict": verdict, "reviewer_context_id": args.context_id.strip(), "same_context_as_executor": self_review, "review_scope": "SELF_REVIEW_ONLY" if self_review else "INDEPENDENT", "evidence_refs": evidence, "notes": args.notes.strip()}
+    if self_review and verdict == "PASS":
+        row["notes"] = (row["notes"] + " [self-review PASS cannot close a gate]").strip()
     append_event(project, row)
     append_jsonl(project / "logs" / "reviews.jsonl", row)
     state = read_state(project)
-    state.update({"review_status": verdict, "review_gate": gate_id, "last_review_id": event_id, "gate_status": "REVIEWED" if verdict == "PASS" else "BLOCKED"})
+    if verdict == "PASS":
+        state["gate_status"] = "SELF_REVIEWED" if self_review else "REVIEWED"
+    else:
+        state["gate_status"] = "BLOCKED"
+    state.update({"review_status": verdict, "review_gate": gate_id, "last_review_id": event_id})
     write_state(project, state)
-    return {"status": "RECORDED", "verdict": verdict, "event_id": event_id, "gate_status": state["gate_status"]}
+    return {"status": "RECORDED", "verdict": verdict, "event_id": event_id, "review_scope": row["review_scope"], "gate_status": state["gate_status"]}
 
 
 def record_failure(args: argparse.Namespace) -> dict:
@@ -390,27 +408,124 @@ def close_failure(args: argparse.Namespace) -> dict:
     return {"status": row["status"], "failure_id": args.failure_id, "open_blockers": state["open_blockers"]}
 
 
+def record_run(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    run_id = args.run_id.strip()
+    if not run_id:
+        raise ValueError("run_id is required")
+    existing = {str(row.get("run_id") or row.get("event_id")) for row in log_rows(project, "run_log.jsonl")}
+    if run_id in existing:
+        raise ValueError(f"duplicate run_id: {run_id}")
+    run_status = args.status.upper()
+    if run_status not in {"SUCCEEDED", "FAILED", "CANCELLED"}:
+        raise ValueError("status must be SUCCEEDED, FAILED, or CANCELLED")
+    outputs = args.output or []
+    validate_relative_refs(project, outputs)
+    if run_status == "SUCCEEDED" and not outputs:
+        raise ValueError("SUCCEEDED run must declare at least one output_ref")
+    event_id = args.event_id or f"RUN-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "run", "timestamp": now(), "run_id": run_id, "gate_id": validate_gate(args.gate_id) if args.gate_id else None, "command": args.command.strip(), "status": run_status, "output_refs": outputs, "notes": args.notes.strip()}
+    append_event(project, {k: v for k, v in row.items() if v is not None})
+    append_jsonl(project / "logs" / "run_log.jsonl", {k: v for k, v in row.items() if v is not None})
+    return {"status": "RECORDED", "run_id": run_id, "run_status": run_status, "outputs": len(outputs)}
+
+
+def record_claim(args: argparse.Namespace) -> dict:
+    project = require_project(args.project)
+    claim_id = args.claim_id.strip()
+    text = args.text.strip()
+    if not claim_id or not text:
+        raise ValueError("claim_id and text are required")
+    existing = {str(row.get("claim_id")) for row in log_rows(project, "claims.jsonl")}
+    if claim_id in existing:
+        raise ValueError(f"duplicate claim_id: {claim_id}")
+    evidence = args.evidence or []
+    run_ids = [r.strip() for r in (args.run_id or []) if r.strip()]
+    if not evidence:
+        raise ValueError("at least one --evidence is required")
+    if not run_ids:
+        raise ValueError("at least one --run-id is required")
+    validate_relative_refs(project, evidence)
+    runs = {str(row.get("run_id") or row.get("event_id")): row for row in log_rows(project, "run_log.jsonl")}
+    declared: set[str] = set()
+    for run_id in run_ids:
+        run = runs.get(run_id)
+        if run is None:
+            raise ValueError(f"referenced run_id not found in run_log.jsonl: {run_id}")
+        if str(run.get("status", "")).upper() != "SUCCEEDED":
+            raise ValueError(f"run {run_id} is not SUCCEEDED")
+        declared.update(str(x) for x in run.get("output_refs", []) if isinstance(x, str))
+    evidence_role = args.evidence_role.upper()
+    if evidence_role not in {"RUN_OUTPUT", "DECISION"}:
+        raise ValueError("evidence_role must be RUN_OUTPUT or DECISION")
+    if evidence_role != "DECISION" and set(evidence).isdisjoint(declared):
+        raise ValueError("no evidence_ref is declared in the referenced runs' output_refs")
+    claim_status = args.status.upper()
+    if claim_status not in {"DRAFT", "APPROVED"}:
+        raise ValueError("status must be DRAFT or APPROVED")
+    known = event_ids(project) | {str(row.get("event_id")) for row in log_rows(project, "human_decisions.jsonl")} | {str(row.get("event_id")) for row in log_rows(project, "reviews.jsonl")}
+    row = {"schema_version": "1.0", "claim_id": claim_id, "recorded_at": now(), "text": text, "status": claim_status, "evidence_refs": evidence, "run_ids": run_ids, "evidence_role": evidence_role}
+    if claim_status == "APPROVED":
+        for key, value in (("decision_ref", args.decision_ref), ("review_ref", args.review_ref)):
+            if not value or not value.strip():
+                raise ValueError(f"APPROVED claim requires --{key.replace('_', '-')}")
+            if value.strip() not in known:
+                raise ValueError(f"{key} does not resolve to a recorded event: {value}")
+            row[key] = value.strip()
+    append_jsonl(project / "logs" / "claims.jsonl", row)
+    return {"status": "RECORDED", "claim_id": claim_id, "claim_status": claim_status}
+
+
 def close_gate(args: argparse.Namespace) -> dict:
     project = require_project(args.project)
     gate_id = validate_gate(args.gate_id)
     state = read_state(project)
     if state.get("current_gate") != gate_id:
         raise ValueError(f"current gate is {state.get('current_gate')!r}; cannot close {gate_id}")
+    closed = state.get("closed_gates", [])
+    predecessors = GATES[: GATES.index(gate_id)]
+    missing = [gate for gate in predecessors if gate not in closed]
+    if missing:
+        raise ValueError(f"preceding gates not closed: {', '.join(missing)}")
     decisions = [row for row in log_rows(project, "human_decisions.jsonl") if row.get("gate_id") == gate_id and row.get("status") == "APPROVED"]
-    reviews = [row for row in log_rows(project, "reviews.jsonl") if row.get("gate_id") == gate_id and row.get("verdict") == "PASS"]
+    independent = [row for row in log_rows(project, "reviews.jsonl") if row.get("gate_id") == gate_id and row.get("verdict") == "PASS" and not row.get("same_context_as_executor")]
     if not decisions:
         raise ValueError("gate has no APPROVED human decision")
-    if not reviews:
-        raise ValueError("gate has no independent reviewer PASS")
+    if not independent:
+        raise ValueError("gate has no independent reviewer PASS (self-review PASS cannot close a gate)")
+    # Order matters: the review must come after the latest approved decision.
+    # events.jsonl append order is the source of truth; timestamps (1s resolution) are the fallback.
+    reviews_after: list[dict] = []
+    events_path = project / "logs" / EVENT_LOG
+    if events_path.exists():
+        decision_pos = -1
+        review_positions: list[tuple[int, dict]] = []
+        for index, row in enumerate(log_rows(project, EVENT_LOG)):
+            if row.get("gate_id") != gate_id:
+                continue
+            if row.get("event_type") == "human_decision" and row.get("status") == "APPROVED":
+                decision_pos = index
+            elif row.get("event_type") == "review_verdict" and row.get("verdict") == "PASS" and not row.get("same_context_as_executor"):
+                review_positions.append((index, row))
+        reviews_after = [row for index, row in review_positions if index > decision_pos]
+    else:
+        latest_decision = max(str(row.get("timestamp", "")) for row in decisions)
+        reviews_after = [row for row in independent if str(row.get("timestamp", "")) > latest_decision]
+    if not reviews_after:
+        raise ValueError("no independent PASS after the latest APPROVED human decision; re-review required")
     if int(state.get("open_blockers", 0)):
         raise ValueError("open blockers remain")
     event_id = args.event_id or f"GC-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "gate_closed", "timestamp": now(), "gate_id": gate_id, "human_decision_ref": decisions[-1].get("event_id"), "review_ref": reviews[-1].get("event_id")}
+    row = {"schema_version": "1.0", "event_id": event_id, "event_type": "gate_closed", "timestamp": now(), "gate_id": gate_id, "human_decision_ref": decisions[-1].get("event_id"), "review_ref": reviews_after[-1].get("event_id")}
     append_event(project, row)
     state["gate_status"] = "CLOSED"
     state.setdefault("closed_gates", []).append(gate_id)
+    upcoming = GATES[GATES.index(gate_id) + 1] if GATES.index(gate_id) + 1 < len(GATES) else None
+    if upcoming:
+        state["current_gate"] = upcoming
+        state["gate_status"] = "CLOSED_ADVANCE_TO_" + upcoming
     write_state(project, state)
-    return {"status": "CLOSED", "gate_id": gate_id, "event_id": event_id}
+    return {"status": "CLOSED", "gate_id": gate_id, "event_id": event_id, "next_gate": upcoming}
 
 
 def freeze(args: argparse.Namespace) -> dict:
@@ -490,6 +605,7 @@ def main() -> int:
     p.add_argument("--gate-id", required=True)
     p.add_argument("--verdict", required=True, choices=tuple(sorted(TERMINAL_REVIEW_VERDICTS)))
     p.add_argument("--context-id", required=True)
+    p.add_argument("--self-review-only", action="store_true", help="honestly mark a same-context self-check; such PASS cannot close a gate")
     p.add_argument("--evidence", action="append")
     p.add_argument("--notes", default="")
     p.add_argument("--event-id")
@@ -512,6 +628,27 @@ def main() -> int:
     p.add_argument("--notes", default="")
     p.add_argument("--event-id")
     p.set_defaults(handler=close_failure)
+    p = sub.add_parser("record-run", help="append one run record to run_log.jsonl")
+    p.add_argument("project")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--status", required=True, choices=("SUCCEEDED", "FAILED", "CANCELLED"))
+    p.add_argument("--command", default="")
+    p.add_argument("--gate-id")
+    p.add_argument("--output", action="append", help="project-relative output file; repeatable")
+    p.add_argument("--notes", default="")
+    p.add_argument("--event-id")
+    p.set_defaults(handler=record_run)
+    p = sub.add_parser("record-claim", help="append one paper claim bound to evidence and runs")
+    p.add_argument("project")
+    p.add_argument("--claim-id", required=True)
+    p.add_argument("--text", required=True)
+    p.add_argument("--evidence", action="append", required=True)
+    p.add_argument("--run-id", action="append", required=True)
+    p.add_argument("--status", default="DRAFT", choices=("DRAFT", "APPROVED"))
+    p.add_argument("--evidence-role", default="RUN_OUTPUT", choices=("RUN_OUTPUT", "DECISION"))
+    p.add_argument("--decision-ref")
+    p.add_argument("--review-ref")
+    p.set_defaults(handler=record_claim)
     p = sub.add_parser("close-gate", help="close a gate only after human approval, reviewer PASS, and no blockers")
     p.add_argument("project")
     p.add_argument("--gate-id", required=True)

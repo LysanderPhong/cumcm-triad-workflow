@@ -51,15 +51,15 @@ metadata:
 2. 填入题面附件、角色、时钟和已有授权。没有上下文不要假定任何 Gate 已过；核心门必须取得实质人类贡献。
 3. 使用 Python 3.10+ 运行 `python scripts/doctor.py --help`，在独立输出目录做环境探针。失败报告不能冒充环境就绪，也不自动授权安装依赖。
 4. 用 [决策卡](templates/decision_card.md) 和 [科学风险卡模板](templates/scientific_risk_card.md) 记录一个子问题的风险适用性、测试计划和主张边界，再用 [人工门提示](templates/prompts/gate_human.md) 准备真实判断点。人工答案进入项目 `logs/human_decisions.jsonl`；机械决定或已批准回退才使用 [自主决定模板](templates/autonomous_decision.jsonl)。
-5. 执行后提交 [交接报告](templates/handoff_report.md)，由隔离审核任务采用 [独立审核提示](templates/prompts/independent_review.md)。审核员只能 PASS、REJECT、BLOCK 或 ESCALATE；REJECT/BLOCK 后由执行者生成新版本，审核员重新审核，不能自修生产结果后自证 PASS。
+5. 执行后提交 [交接报告](templates/handoff_report.md)，由隔离审核任务采用 [独立审核提示](templates/prompts/independent_review.md)。审核员只能 PASS、REJECT、BLOCK 或 ESCALATE；REJECT/BLOCK 后由执行者生成新版本，审核员重新审核，不能自修生产结果后自证 PASS。`record-review` 默认把审核记为独立审核；同一上下文自查必须加 `--self-review-only` 如实标注，此类 PASS 会入账但不能用于关门。关门还要求：前序门均已关闭、独立 PASS 晚于该门最近一次 APPROVED 人工决定（按 events.jsonl 追加顺序判定）。
 6. 如果需要降低论文的模板化 AI 语气，先建立 [历史论文风格档案](references/historical_style_profile.md)，再进入论文写作。档案只抽取公开老论文中可观察的结构和表达机制：背景如何落到任务、每问如何解释变量与模型、结果如何回到现实决策、异常与局限如何收口。官方“论文展示”只能证明公开样本，奖项等级需单独核验；不得复制独特句子或把老论文的数字、动机、结论移入当前论文。
 7. 风格档案生成后，由人类确认哪些特征适合当前题目，再由执行代理做受约束改写。每段修改保留原有数字、单位、标签、模型和证据边界；新增解释必须能回指结果文件、方法说明或人类决定卡。用“现象 → 量化定义 → 模型 → 证据 → 现实含义”的顺序减少算法名堆叠，但不得为了“像人”加入口语、虚构经历或不受证据支持的因果判断。
 8. 从开局按阶段、用途和影响范围保存真实 AI 交互，使用 [AI 使用详情模板](templates/ai_usage_disclosure.md) 和 `templates/logs/ai_usage.jsonl` 分组记录；高影响或代表性事件保留精确原始引用，不要求复制每条聊天。提交前读 [2026 官方合规清单](references/official_compliance.md)，核对当年官方原文与实际 PDF/支撑包。
 9. 论文写完后先冻结候选稿，再运行 `scripts/paper_review.py`，把用户提供的同方向优秀论文作为 `--reference` 输入，生成 HTML 多维对比和写作风险清单。用户逐条决定修改；报告不生成 AI 百分比、不自动改写论文，也不替代 AI 使用披露。图表按 [视觉规范](references/visual_style.md) 与 `templates/figure_style.json` 生成和复核。
-10. 将论文中的关键主张登记到 `logs/claims.jsonl`，为每条主张绑定项目内 `evidence_refs` 与产生它们的 `run_ids`，在论文/合规/冻结门前运行 `scripts/claim_check.py`【单轮验证】。它能发现证据断链、失败运行和伪造路径，但不证明科学命题本身正确；格式见 [Claim 证据链](references/claim_evidence_run.md)。
+10. 每次代码运行用 `triad.py record-run` 登记（`--status` 为 SUCCEEDED/FAILED/CANCELLED，SUCCEEDED 必须声明实际存在的 `--output`）；将论文中的关键主张用 `triad.py record-claim` 登记到 `logs/claims.jsonl`，为每条主张绑定项目内 `--evidence` 与产生它们的 `--run-id`，APPROVED 主张还需 `--decision-ref` 与 `--review-ref` 指向已记录事件。登记即做 fail-closed 校验：引用的 run 不存在、未成功或未声明该证据会被当场拒绝。在论文/合规/冻结门前运行 `scripts/claim_check.py`【单轮验证】。它能发现证据断链、失败运行和伪造路径，但不证明科学命题本身正确；格式见 [Claim 证据链](references/claim_evidence_run.md)。
 11. 冻结时分别记录官方提交资格、科学证据准备、奖项评估、可选安全检查。任一状态的 PASS 不传递给其他状态；本 Skill 的脚本也不会替人签发或自动发布。
 
-`scripts/triad.py` 负责可逆的机械工作和 fail-closed 门控制：导入文件、汇总状态、追加人工决定、记录审核/失败、在证据满足时关闭门并生成审核包。未知 Gate、伪造 evidence、开放 blocker 或缺少独立审核时会拒绝关闭/冻结；它不替人批准核心模型或自动冻结。审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。规范合同见 `schemas/`。
+`scripts/triad.py` 负责可逆的机械工作和 fail-closed 门控制：导入文件、汇总状态（含已关门、下一门和未决失败）、追加人工决定、登记运行/主张/审核/失败、在证据满足时按顺序关闭门并生成审核包。未知 Gate、伪造 evidence、开放 blocker、跳门、自审 PASS 或缺少独立审核时会拒绝关闭/冻结；它不替人批准核心模型或自动冻结。审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。规范合同见 `schemas/`。
 
 ## 工具和证据边界
 

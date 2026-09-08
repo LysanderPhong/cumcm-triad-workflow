@@ -34,7 +34,9 @@ cd cumcm-triad-workflow
 python3 scripts/doctor.py --output-dir ../doctor-result
 ```
 
-`doctor.py` 只检查 NumPy、Matplotlib、XeLaTeX、ctex 和中文字体，并生成最小测试图、中文 PDF 和报告；它不会自动安装依赖。
+`doctor.py` 只检查 NumPy、Matplotlib、XeLaTeX、ctex 和中文字体，并生成最小测试图、中文 PDF 和报告；它不会自动安装依赖。macOS 缺 XeLaTeX 时，训练用途装 BasicTeX（小）即可，需要完整宏包再考虑 MacTeX。
+
+首次使用建议先跑一遍 `examples/minimal-cold-start/` 里的示例台账熟悉事件流，再上真题；`triad.py status` 会随时告诉你已关闭的门、下一门和未决失败。
 
 ### 2. 创建项目并导入题面
 
@@ -114,6 +116,8 @@ python3 scripts/triad.py record-review ../my-modeling-project \
 
 如果审核拒绝，必须保留原失败、生成新版本、重新审核。未关闭的 blocker 不允许关门或冻结。
 
+两点约束：`record-review` 默认记为独立审核；如果只有同一上下文自查，必须加 `--self-review-only` 如实标注，这类 PASS 会入账但不能用于关门。关门还要求前序门均已关闭，且独立 PASS 晚于该门最近一次人工批准（否则需要重新审核）。
+
 需要打包审核材料时：
 
 ```bash
@@ -124,13 +128,30 @@ python3 scripts/triad.py review-packet ../my-modeling-project
 
 ### 7. 登记论文主张和证据链
 
+先为每次代码运行登记台账，再登记主张。每次运行：
+
+```bash
+python3 scripts/triad.py record-run ../my-modeling-project \
+  --run-id Q1-BASELINE-001 --status SUCCEEDED \
+  --command "python code/q1_baseline.py" \
+  --output results/q1_metrics.csv
+```
+
+`--status` 可选 `SUCCEEDED` / `FAILED` / `CANCELLED`；SUCCEEDED 必须声明实际存在的输出文件。
+
 论文里的关键数字和结论登记到 `logs/claims.jsonl`。每条 Claim 必须关联：
 
 - 项目内真实证据文件；
 - 产生这些文件的成功运行；
 - 若已批准，还要关联人工决定和独立审核事件。
 
-运行检查：
+```bash
+python3 scripts/triad.py record-claim ../my-modeling-project \
+  --claim-id C-Q1-01 --text "基线模型在验证集上 RMSE=0.83" \
+  --evidence results/q1_metrics.csv --run-id Q1-BASELINE-001
+```
+
+登记时即做校验：引用的运行不存在、未成功、或证据不在该运行的输出里，都会被当场拒绝。之后运行检查：
 
 ```bash
 python3 scripts/claim_check.py ../my-modeling-project
