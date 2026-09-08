@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Triad failure record",
+  "type": "object",
+  "required": ["schema_version", "failure_id", "status", "severity"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "failure_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["OPEN", "FIXED", "ACCEPTED_RISK"]},
+    "severity": {"enum": ["CRITICAL", "MAJOR", "MINOR"]},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
