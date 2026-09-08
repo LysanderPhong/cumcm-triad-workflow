@@ -31,7 +31,7 @@ metadata:
 
 启动 → 选题 → 定义 → 路线 → 逐问建模 → 论文风格档案 → 论文 → 排版 → 合规 → 终审冻结。只推进当前具备证据的一门；缺少前置事实时只做不依赖它的工作。论文风格档案是论文门内的可选子阶段，不改变科学门的顺序，也不替代人类对主张和解释的批准。
 
-读取 [阶段门清单](references/stage_gates.md)，按每门准入、准出及成熟度执行。G2/G3/G4 是 B02 的历史门名，不能直接套用其他技能中同名门的含义。完整三角色组织【单轮验证】；阶段表中的 30 分钟响应 SLA 是拟定规则【未验证】，见 [人工门时限](references/human_gate_sla.md)。超时不是授权：只有事前明确批准的回退能执行，否则停止依赖该决定的工作。
+读取 [阶段门清单](references/stage_gates.md)，按每门准入、准出及成熟度执行。G2/G3/G4 是 B02 的历史门名，不能直接套用其他技能中同名门的含义。逐子问题建立 [科学风险卡](references/scientific_risk_cards.md)，至少登记假设、数据、识别性、敏感性、基线和越界/外推六类风险；风险卡动态生成和自动消费当前【未验证】，不能把未知写成 `NOT_APPLICABLE`。完整三角色组织【单轮验证】；阶段表中的 30 分钟响应 SLA 是拟定规则【未验证】，见 [人工门时限](references/human_gate_sla.md)。超时不是授权：只有事前明确批准的回退能执行，否则停止依赖该决定的工作。
 
 ## 五条铁律
 
@@ -50,13 +50,14 @@ metadata:
 1. 在空目录运行 `python scripts/triad.py start path/to/project --input problem.pdf attachments/`，即可初始化并导入题面；也可单独运行 `init_project.py`。随后用 `triad.py status` 查看下一步。初始化器只创建标准目录和空台账，不复制 Benchmark 数据，也不覆盖已有生成路径。
 2. 填入题面附件、角色、时钟和已有授权。没有上下文不要假定任何 Gate 已过；核心门必须取得实质人类贡献。
 3. 使用 Python 3.10+ 运行 `python scripts/doctor.py --help`，在独立输出目录做环境探针。失败报告不能冒充环境就绪，也不自动授权安装依赖。
-4. 用 [决策卡](templates/decision_card.md) 和 [人工门提示](templates/prompts/gate_human.md) 准备一个真实判断点。人工答案进入项目 `logs/human_decisions.jsonl`；机械决定或已批准回退才使用 [自主决定模板](templates/autonomous_decision.jsonl)。
+4. 用 [决策卡](templates/decision_card.md) 和 [科学风险卡模板](templates/scientific_risk_card.md) 记录一个子问题的风险适用性、测试计划和主张边界，再用 [人工门提示](templates/prompts/gate_human.md) 准备真实判断点。人工答案进入项目 `logs/human_decisions.jsonl`；机械决定或已批准回退才使用 [自主决定模板](templates/autonomous_decision.jsonl)。
 5. 执行后提交 [交接报告](templates/handoff_report.md)，由隔离审核任务采用 [独立审核提示](templates/prompts/independent_review.md)。审核员只能 PASS、REJECT、BLOCK 或 ESCALATE；REJECT/BLOCK 后由执行者生成新版本，审核员重新审核，不能自修生产结果后自证 PASS。
 6. 如果需要降低论文的模板化 AI 语气，先建立 [历史论文风格档案](references/historical_style_profile.md)，再进入论文写作。档案只抽取公开老论文中可观察的结构和表达机制：背景如何落到任务、每问如何解释变量与模型、结果如何回到现实决策、异常与局限如何收口。官方“论文展示”只能证明公开样本，奖项等级需单独核验；不得复制独特句子或把老论文的数字、动机、结论移入当前论文。
 7. 风格档案生成后，由人类确认哪些特征适合当前题目，再由执行代理做受约束改写。每段修改保留原有数字、单位、标签、模型和证据边界；新增解释必须能回指结果文件、方法说明或人类决定卡。用“现象 → 量化定义 → 模型 → 证据 → 现实含义”的顺序减少算法名堆叠，但不得为了“像人”加入口语、虚构经历或不受证据支持的因果判断。
 8. 从开局按阶段、用途和影响范围保存真实 AI 交互，使用 [AI 使用详情模板](templates/ai_usage_disclosure.md) 和 `templates/logs/ai_usage.jsonl` 分组记录；高影响或代表性事件保留精确原始引用，不要求复制每条聊天。提交前读 [2026 官方合规清单](references/official_compliance.md)，核对当年官方原文与实际 PDF/支撑包。
 9. 论文写完后先冻结候选稿，再运行 `scripts/paper_review.py`，把用户提供的同方向优秀论文作为 `--reference` 输入，生成 HTML 多维对比和写作风险清单。用户逐条决定修改；报告不生成 AI 百分比、不自动改写论文，也不替代 AI 使用披露。图表按 [视觉规范](references/visual_style.md) 与 `templates/figure_style.json` 生成和复核。
-10. 冻结时分别记录官方提交资格、科学证据准备、奖项评估、可选安全检查。任一状态的 PASS 不传递给其他状态；本 Skill 的脚本也不会替人签发或自动发布。
+10. 将论文中的关键主张登记到 `logs/claims.jsonl`，为每条主张绑定项目内 `evidence_refs` 与产生它们的 `run_ids`，在论文/合规/冻结门前运行 `scripts/claim_check.py`【单轮验证】。它能发现证据断链、失败运行和伪造路径，但不证明科学命题本身正确；格式见 [Claim 证据链](references/claim_evidence_run.md)。
+11. 冻结时分别记录官方提交资格、科学证据准备、奖项评估、可选安全检查。任一状态的 PASS 不传递给其他状态；本 Skill 的脚本也不会替人签发或自动发布。
 
 `scripts/triad.py` 负责可逆的机械工作和 fail-closed 门控制：导入文件、汇总状态、追加人工决定、记录审核/失败、在证据满足时关闭门并生成审核包。未知 Gate、伪造 evidence、开放 blocker 或缺少独立审核时会拒绝关闭/冻结；它不替人批准核心模型或自动冻结。审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。规范合同见 `schemas/`。
 
@@ -66,5 +67,6 @@ metadata:
 - `scripts/hash_check.py`：按指定清单核对文件 SHA-256；仅证明文件与给定指纹一致，不证明数学或语义正确。只在授权的完整性或版本指纹场景使用，遵守项目计算次数约束。
 - `scripts/anonym_scan.py`：查找身份线索；不能替代人工审查或 OCR，PDF 无法提取时必须报告未完成。
 - `scripts/paper_review.py`：对候选论文与用户提供的历史样本做多维结构/表达/证据对比，并生成可保存修改决定的 HTML；AI 风险提示是启发式检查，不是 AI 率测量。
+- `scripts/claim_check.py`：验证论文 Claim → evidence → run 链，拒绝缺失、失败或未声明产出的证据引用；不替代数学复核。
 
 历史因果和全部出处见 [演进记录](references/evolution.md)；应用实例见 [B01 教训](examples/benchmark_01_lessons.md) 与 [B02 案例](examples/benchmark_02_case_study.md)。历史 Benchmark 证据与当前打包版本验证分开：静态文件检查可为 `VERIFIED`，Benchmark 02 三角色仅为 `SINGLE-RUN VERIFIED / historical`；当前 Skill 的冷启动、越权停止、审核否决、修复复审和人工门行为在实际运行前均为 `UNVERIFIED`。案例来源是文件证据，不把自评当成绩证明。不保证获奖；72 小时时间轴及跨题型通用性【未验证】，须由第三套独立题目检验。
