@@ -18,6 +18,7 @@ import sys
 DIRECTORIES = (
     "raw",
     "planning/decision_cards",
+    "planning/risk_cards",
     "logs",
     "code",
     "results",
