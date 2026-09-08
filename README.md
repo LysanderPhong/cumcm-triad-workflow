@@ -27,6 +27,8 @@ python3 scripts/doctor.py --output-dir ../triad-doctor
 python3 scripts/init_project.py ../my-modeling-project
 ```
 
+初始化器会同时创建 `planning/decision_cards/` 和 `planning/risk_cards/`，分别保存人工决定卡与逐子问题科学风险卡。
+
 也可以用总控入口一次完成初始化和题面导入：
 
 ```sh
