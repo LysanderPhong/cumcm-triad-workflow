@@ -1,0 +1,1 @@
+{"schema_version":"1.0","claim_id":"CLM-Q1-001","text":"在给定数据和约束下，主方法相较基线降低了验证集误差。","scope":"Q1 / 验证集 / 指标定义见 planning/decision_cards/q1_metrics.md","status":"PROPOSED","evidence_refs":["results/q1_main_metrics.csv","results/q1_baseline_metrics.csv"],"run_ids":["RUN-Q1-20260909-001"],"evidence_role":"RUN_OUTPUT","decision_ref":"HD-Q1-ROUTE","review_ref":"RV-Q1-ROUTE"}
