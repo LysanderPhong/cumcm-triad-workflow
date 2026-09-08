@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reproducible run event",
+  "type": "object",
+  "required": ["schema_version", "event_id", "stage", "command", "status"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string"},
+    "stage": {"type": "string", "minLength": 1},
+    "command": {"type": "string", "minLength": 1},
+    "exit_code": {"type": ["integer", "null"]},
+    "status": {"enum": ["STARTED", "SUCCEEDED", "FAILED", "CANCELLED"]}
+  },
+  "additionalProperties": true
+}
