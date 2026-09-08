@@ -1,0 +1,1 @@
+{"schema_version":"1.0","event_id":"AD-REPLACE","timestamp":"UNKNOWN","gate_id":"GATE-REPLACE","gate_class":"IMPLEMENTATION","decision_owner":"execution_agent","authorization_ref":"human_decision_id or preapproved contract","action":"bounded mechanical action","reason":"observed fact and authorization","status":"EXECUTED|BLOCKED|NOT_EXECUTED","evidence_refs":[],"supersedes":null}

@@ -1,0 +1,14 @@
+.DS_Store
+__MACOSX/
+__pycache__/
+*.pyc
+.env
+.env.*
+
+# Local generated validation output and temporary project workspaces
+validation/doctor_full/
+validation/script_logs/
+validation/fixtures/
+triad-doctor/
+test-project/
+tmp/

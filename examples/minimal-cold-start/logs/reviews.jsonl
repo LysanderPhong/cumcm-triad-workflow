@@ -1,0 +1,2 @@
+{"schema_version":"1.0","review_id":"RV-001","timestamp":"2026-01-01T09:12:00Z","artifact":"results/v1.json","reviewer_role":"independent_reviewer","decision":"REJECT","findings":["label does not match human-approved statistic"],"production_modified":false,"evidence_refs":["results/v1.json"]}
+{"schema_version":"1.0","review_id":"RV-002","timestamp":"2026-01-01T09:20:00Z","artifact":"results/v2.json","reviewer_role":"independent_reviewer","decision":"PASS","findings":[],"production_modified":false,"evidence_refs":["results/v2.json","logs/failures.jsonl#F-001"]}

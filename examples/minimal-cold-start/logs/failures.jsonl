@@ -1,0 +1,1 @@
+{"schema_version":"1.0","failure_id":"F-001","timestamp":"2026-01-01T09:10:00Z","stage":"review","artifact":"results/v1.json","failure_type":"MECHANICAL","description":"Version 1 labels the mean as the approved median.","detected_by":"reviewer","severity":"MAJOR","status":"FIXED","repair_ref":"results/v2.json","verification_ref":"logs/reviews.jsonl#RV-002"}

@@ -1,0 +1,1 @@
+{"schema_version":"1.0","change_id":"RC-REPLACE","timestamp":"UNKNOWN","previous_route":"route/version","proposed_route":"route/version","reason":"observed evidence","trigger":"budget|failure|new_human_direction|other","requires_human_gate":true,"human_decision_ref":null,"status":"PROPOSED|APPROVED|REJECTED|EXECUTED"}

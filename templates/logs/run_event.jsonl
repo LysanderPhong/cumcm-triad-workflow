@@ -1,0 +1,1 @@
+{"schema_version":"1.0","event_id":"RUN-REPLACE","timestamp":"UNKNOWN","stage":"STAGE-REPLACE","actor_role":"executor|reviewer|human","command":"relative/reproducible command","working_directory":"relative/path","input_refs":[],"output_refs":[],"exit_code":null,"status":"STARTED|SUCCEEDED|FAILED|CANCELLED","notes":"UNKNOWN until observed"}

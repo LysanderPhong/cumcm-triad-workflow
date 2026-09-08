@@ -1,0 +1,1 @@
+{"schema_version":"1.0","event_id":"TIME-REPLACE","timestamp":"UNKNOWN","event_type":"clock_start|clock_checkpoint|human_wait|active_work|clock_stop","stage":"STAGE-REPLACE","actor_role":"human|executor|reviewer|system","elapsed_minutes":null,"source_ref":"relative/time-source","status":"OBSERVED|UNKNOWN","notes":"Wall clock does not pause during human waiting"}
