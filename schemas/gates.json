@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canonical triad gates",
+  "type": "object",
+  "required": ["schema_version", "gates"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "gates": {"const": ["START", "TOPIC", "DEFINITION", "ROUTE", "MODEL", "PAPER", "LAYOUT", "COMPLIANCE", "FREEZE"]}
+  },
+  "additionalProperties": false
+}
