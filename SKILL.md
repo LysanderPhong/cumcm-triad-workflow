@@ -58,7 +58,7 @@ metadata:
 9. 论文写完后先冻结候选稿，再运行 `scripts/paper_review.py`，把用户提供的同方向优秀论文作为 `--reference` 输入，生成 HTML 多维对比和写作风险清单。用户逐条决定修改；报告不生成 AI 百分比、不自动改写论文，也不替代 AI 使用披露。图表按 [视觉规范](references/visual_style.md) 与 `templates/figure_style.json` 生成和复核。
 10. 冻结时分别记录官方提交资格、科学证据准备、奖项评估、可选安全检查。任一状态的 PASS 不传递给其他状态；本 Skill 的脚本也不会替人签发或自动发布。
 
-`scripts/triad.py` 只编排可逆的机械工作：导入文件、汇总状态、追加人工决定和生成审核包。它不替人批准核心模型、关闭失败或冻结提交；审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。
+`scripts/triad.py` 负责可逆的机械工作和 fail-closed 门控制：导入文件、汇总状态、追加人工决定、记录审核/失败、在证据满足时关闭门并生成审核包。未知 Gate、伪造 evidence、开放 blocker 或缺少独立审核时会拒绝关闭/冻结；它不替人批准核心模型或自动冻结。审核包交给独立上下文后仍须人工处理 `REJECT/BLOCK/ESCALATE`。规范合同见 `schemas/`。
 
 ## 工具和证据边界
 
