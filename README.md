@@ -39,7 +39,7 @@ python3 scripts/triad.py status ../my-modeling-project
 ```sh
 python3 scripts/triad.py record-human ../my-modeling-project --gate-id START --gate-class CORE_MODELING \
   --selected "线性基线" --contribution "我先用可解释基线检验变量关系，再决定是否增加非线性模型。" \
-  --rationale "先保留可比较的基准。"
+  --rationale "先保留可比较的基准。" --evidence raw/problem.pdf
 python3 scripts/triad.py review-packet ../my-modeling-project
 ```
 
@@ -65,7 +65,7 @@ python3 scripts/paper_review.py --paper paper/draft.md \
 
 ## 脚本使用约定
 
-五个脚本支持 Python 3.10+，脚本运行和参数处理使用标准库。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 与 `paper_review.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
+`scripts/` 中的工具支持 Python 3.10+，运行和参数处理以标准库为基础。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 与 `paper_review.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
 
 - 环境探针只在指定输出目录生成最小测试图、中文 PDF 和报告；成功不等于比赛代码可复现。
 - `schemas/`：规范 Gate、事件、审核、失败和运行记录的版本化合同。
