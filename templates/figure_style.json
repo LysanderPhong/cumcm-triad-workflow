@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "style_name": "flat-muted-editorial",
+  "status": "DEFAULT_UNVERIFIED",
+  "fonts": {
+    "family": "Source Han Sans SC",
+    "fallback": ["Noto Sans CJK SC", "PingFang SC", "Arial Unicode MS"],
+    "title_pt": 12,
+    "axis_pt": 10,
+    "tick_pt": 9,
+    "caption_pt": 9,
+    "annotation_pt": 9
+  },
+  "colors": {
+    "categorical": ["#587C8C", "#B07A61", "#7E8F67", "#8B7A9E", "#C29A62", "#6C8DA5"],
+    "sequential": ["#EEF3F4", "#C8DADD", "#9FBFC4", "#719AA3", "#4B747E"],
+    "neutral": "#667085",
+    "background": "#FFFFFF",
+    "text": "#263238",
+    "grid": "#D9E1E4"
+  },
+  "effects": {
+    "flat": true,
+    "shadows": false,
+    "three_dimensional": false,
+    "gradients": false,
+    "glow": false,
+    "heavy_borders": false
+  },
+  "accessibility": {
+    "use_color_alone": false,
+    "check_grayscale": true,
+    "minimum_contrast_ratio": 3.0
+  }
+}
