@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LysanderPhong/cumcm-triad-workflow/blob/main/schemas/risk_card.schema.json",
+  "title": "Scientific subproblem risk card",
+  "description": "A dynamic, evidence-linked risk register for one modeling subproblem. It records applicability before testing and does not select a method or mark an untested risk safe.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "risk_card_id",
+    "problem_id",
+    "subproblem_id",
+    "question_type",
+    "maturity",
+    "status",
+    "shared_boundary",
+    "risks"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "risk_card_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{2,63}$"},
+    "problem_id": {"type": "string", "minLength": 1},
+    "subproblem_id": {"type": "string", "minLength": 1},
+    "question_type": {"type": "string", "minLength": 1},
+    "created_at": {"type": ["string", "null"]},
+    "maturity": {
+      "type": "string",
+      "enum": ["两轮验证", "单轮验证", "未验证"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "HUMAN_REVIEW_REQUIRED", "IN_TESTING", "BLOCKED", "MITIGATED", "ACCEPTED"]
+    },
+    "shared_boundary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Bounds common to every candidate: units, domain, objective, search family, uncertainty meaning and claim limits."
+    },
+    "human_decision_ref": {"type": ["string", "null"]},
+    "risks": {
+      "type": "array",
+      "minItems": 6,
+      "items": {"$ref": "#/$defs/risk"},
+      "allOf": [
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "ASSUMPTIONS"}}}},
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "DATA"}}}},
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "IDENTIFIABILITY"}}}},
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "SENSITIVITY"}}}},
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "BASELINE"}}}},
+        {"contains": {"required": ["dimension"], "properties": {"dimension": {"const": "BOUNDARY_EXTRAPOLATION"}}}}
+      ]
+    }
+  },
+  "$defs": {
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_id",
+        "dimension",
+        "applicability",
+        "rationale",
+        "observed_risk",
+        "test_plan",
+        "acceptance_criteria",
+        "status",
+        "evidence_refs"
+      ],
+      "properties": {
+        "risk_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{2,63}$"},
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "ASSUMPTIONS",
+            "DATA",
+            "IDENTIFIABILITY",
+            "SENSITIVITY",
+            "BASELINE",
+            "BOUNDARY_EXTRAPOLATION"
+          ]
+        },
+        "applicability": {
+          "type": "string",
+          "enum": ["APPLICABLE", "NOT_APPLICABLE", "REVIEW_REQUIRED"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 12,
+          "description": "Why this applicability decision is justified for this subproblem; unknown cannot be silently treated as N/A."
+        },
+        "observed_risk": {"type": "string", "minLength": 1},
+        "test_plan": {"type": "string", "minLength": 1},
+        "acceptance_criteria": {"type": "string", "minLength": 1},
+        "owner_role": {
+          "type": "string",
+          "enum": ["human_decision_maker", "execution_agent", "independent_reviewer"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["OPEN", "TESTED", "MITIGATED", "ACCEPTED", "BLOCKED", "NOT_APPLICABLE_PENDING_REVIEW"]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])[^\\\\\n]+$"}
+        },
+        "run_refs": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "claim_scope": {"type": ["string", "null"]},
+        "human_note": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
