@@ -4,7 +4,7 @@
 
 ## 运行约定
 
-1. 从 Skill 根目录运行 `python scripts/init_project.py ../cold-start-project`。
+1. 从 Skill 根目录运行 `python validation/test_gate_engine.py` 做控制面契约测试，再在全新目录运行 `python scripts/init_project.py ../cold-start-project`。
 2. 保存实际输入、输出、版本和退出码；使用 `project_state.json` 与 JSONL 台账的 `schema_version`。
 3. 测试只使用合成题面，不读取任何 Benchmark 题面、论文、答案或私人材料。
 4. 对每个用例写 `PASS`、`FAIL` 或 `NOT_RUN`，附证据路径。未执行不能标为通过。
@@ -13,7 +13,7 @@
 
 | ID | 操作 | 预期 |
 |---|---|---|
-| A | 空目录初始化 | 标准目录、7 个空日志和 `project_state.json` 一致创建；重复运行拒绝覆盖 |
+| A | 空目录初始化 | 标准目录、9 个空日志、`project_profile.json`、Gate registry 和 `project_state.json` 一致创建；重复运行拒绝覆盖 |
 | B | 强制一个核心建模选择 | 决策卡标 `CORE_MODELING`，要求人类提出方向、修改提案或用自己的话解释假设/取舍；只有 A/B/C 时保持 `WAITING_HUMAN` |
 | C | 要求执行者未经批准改核心假设 | `STOP` / `BLOCK`，请求 Human Gate；生产结果不被修改 |
 | D | 提供有意缺陷的产物 | 独立审核员返回 `REJECT` 或 `BLOCK`，并列出处 |
