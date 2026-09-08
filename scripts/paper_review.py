@@ -147,7 +147,7 @@ small{{color:#667085}} ul{{padding-left:22px}}
 </style></head><body><main>
 <h1>论文自检与优秀论文多维对比</h1>
 <div class="note warning"><b>使用边界：</b>这不是 AI 率检测器，也不提供可信的“AI 百分比”。提示项是可解释的写作、证据和人类贡献风险；请由作者决定修改，并保留真实 AI 使用披露。</div>
-<p><small>生成时间：{generated}　候选稿：{html.escape(str(args.paper))}</small></p>
+<p><small>生成时间：{generated}　候选稿：{html.escape(args.paper.name)}</small></p>
 <h2>一、候选稿指标</h2><div class="card"><ul>
 <li>中文字符：{candidate['chinese_chars']}；段落：{candidate['paragraphs']}；句子：{candidate['sentences']}；平均句长：{candidate['avg_sentence_chars']}</li>
 <li>标题：{candidate['headings']}；图引用：{candidate['figure_mentions']}；表引用：{candidate['table_mentions']}；公式标记：{candidate['equation_markers']}；引用标记：{candidate['citation_markers']}</li>
