@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Independent review verdict",
+  "type": "object",
+  "required": ["schema_version", "event_id", "gate_id", "verdict", "reviewer_context_id", "same_context_as_executor"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "event_id": {"type": "string"},
+    "gate_id": {"enum": ["START", "TOPIC", "DEFINITION", "ROUTE", "MODEL", "PAPER", "LAYOUT", "COMPLIANCE", "FREEZE"]},
+    "verdict": {"enum": ["PASS", "REJECT", "BLOCK", "ESCALATE"]},
+    "reviewer_context_id": {"type": "string", "minLength": 1},
+    "same_context_as_executor": {"const": false},
+    "evidence_refs": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
