@@ -37,13 +37,15 @@ python3 scripts/triad.py status ../my-modeling-project
 总控入口还可把一条人工决定写入正确台账，并生成独立审核包：
 
 ```sh
-python3 scripts/triad.py record-human ../my-modeling-project --gate-id G1 --gate-class CORE_MODELING \
+python3 scripts/triad.py record-human ../my-modeling-project --gate-id START --gate-class CORE_MODELING \
   --selected "线性基线" --contribution "我先用可解释基线检验变量关系，再决定是否增加非线性模型。" \
   --rationale "先保留可比较的基准。"
 python3 scripts/triad.py review-packet ../my-modeling-project
 ```
 
 `triad.py` 只自动处理文件搬运、状态汇总、台账格式和审核材料打包；它不会替人批准核心建模决定、关闭失败或冻结提交。
+
+阶段控制命令还包括 `record-review`、`record-failure`、`close-failure`、`close-gate`、`freeze` 和 `validate`。它们只接受 `schemas/` 中的规范 Gate ID；审核 PASS 必须带项目内证据和独立上下文，冻结必须有所有前置门关闭、无开放 blocker 和实质性人工确认。状态文件是派生视图，事件追加保存在 `logs/events.jsonl`。
 
 论文候选稿完成后，先用用户提供的同方向优秀论文做多维对比，并生成可在浏览器中勾选和备注的 HTML 自检页：
 
@@ -66,6 +68,7 @@ python3 scripts/paper_review.py --paper paper/draft.md \
 五个脚本支持 Python 3.10+，脚本运行和参数处理使用标准库。`doctor.py` 检查的目标环境需要 NumPy、Matplotlib、XeLaTeX、ctex 和可用中文字体；这些是被测依赖，脚本不自动安装。`anonym_scan.py` 与 `paper_review.py` 读取 PDF 可选用 pypdf；缺失或无可提取文字时报告未完成，不给完整通过。完整参数和退出码以各脚本 `--help` 为准。
 
 - 环境探针只在指定输出目录生成最小测试图、中文 PDF 和报告；成功不等于比赛代码可复现。
+- `schemas/`：规范 Gate、事件、审核、失败和运行记录的版本化合同。
 - SHA-256 清单需要可信的已知指纹；不要先给待测文件生成新指纹再以匹配证明正确。
 - 匿名扫描需要补充真实学校、姓名、赛区等待排查词；默认模式只找可疑线索，人工仍需检查图片、元数据与误报。
 
