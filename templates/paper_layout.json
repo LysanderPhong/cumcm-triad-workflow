@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "layout_name": "cumcm-editorial-25-page",
+  "status": "DEFAULT_UNVERIFIED",
+  "page_budget": {
+    "target_pages": 25,
+    "minimum_pages": 20,
+    "maximum_pages": 30,
+    "overrun_action": "REVIEW_BEFORE_CONTENT_CUT"
+  },
+  "page": {
+    "size": "A4",
+    "margins_mm": {"top": 24, "bottom": 22, "left": 25, "right": 25},
+    "header": "optional_section_title",
+    "footer": "centered_page_number"
+  },
+  "typography": {
+    "chinese_body_family": "SimSun",
+    "latin_body_family": "Times New Roman",
+    "fallback": ["Noto Serif CJK SC", "Source Han Serif SC", "Latin Modern Roman"],
+    "title_pt": 16,
+    "abstract_heading_pt": 14,
+    "body_pt": 12,
+    "body_leading": 1.5,
+    "body_first_line_indent_em": 2,
+    "level1_heading_style": "Chinese_numeral_bold_centered",
+    "level2_heading_style": "decimal_bold_left",
+    "caption_pt": 10,
+    "equation_alignment": "centered"
+  },
+  "structure": {
+    "front_page": ["title", "abstract", "keywords"],
+    "subproblem_loop": ["analysis", "formulation", "solution", "results_and_checks", "limitations"],
+    "back_matter": ["references", "supporting_materials", "problem_split_code_notes"]
+  },
+  "tables": {
+    "numbering": "continuous",
+    "alignment": "center",
+    "rules": "horizontal_only",
+    "vertical_rules": false
+  },
+  "figures": {
+    "numbering": "continuous",
+    "alignment": "center",
+    "caption_position": "below",
+    "style_profile": "templates/figure_style.json"
+  }
+}
