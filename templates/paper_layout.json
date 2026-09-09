@@ -8,6 +8,12 @@
     "maximum_pages": 30,
     "overrun_action": "REVIEW_BEFORE_CONTENT_CUT"
   },
+  "abstract": {
+    "must_fit_one_page": true,
+    "target_usable_height_fraction": {"minimum": 0.70, "maximum": 0.80},
+    "minimum_chinese_characters_advisory": 700,
+    "required_content": ["problem_scope", "method", "key_results", "validation", "limitations"]
+  },
   "page": {
     "size": "A4",
     "margins_mm": {"top": 24, "bottom": 22, "left": 25, "right": 25},
