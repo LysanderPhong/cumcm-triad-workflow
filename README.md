@@ -8,7 +8,7 @@
 - 执行代理负责代码、实验、整理和修改；
 - 独立审核员负责复核证据、指出问题并阻断不合格结果。
 
-它可以和任何"阶段专业技能"（数据审计、方法筛选、代码生成、稳健性检验、论文写作等）搭配使用：那些技能负责各阶段的专业产物，`cumcm-triad-workflow` 负责"谁能决定、谁要留证据、什么时候必须停下来复核"。本仓库自包含，不依赖任何外部技能包。
+它和本地 28-skill 套件是互补关系：28-skill 负责各阶段的专业产物，`cumcm-triad-workflow` 负责“谁能决定、谁要留证据、什么时候必须停下来复核”。
 
 当前版本是 **Experimental / Release Candidate**，不是获奖保证，也不是自动论文生成器。
 
@@ -34,9 +34,7 @@ cd cumcm-triad-workflow
 python3 scripts/doctor.py --output-dir ../doctor-result
 ```
 
-`doctor.py` 只检查 NumPy、Matplotlib、XeLaTeX、ctex 和中文字体，并生成最小测试图、中文 PDF 和报告；它不会自动安装依赖。macOS 缺 XeLaTeX 时，训练用途装 BasicTeX（小）即可，需要完整宏包再考虑 MacTeX。
-
-首次使用建议先跑一遍 `examples/minimal-cold-start/` 里的示例台账熟悉事件流，再上真题；`triad.py status` 会随时告诉你已关闭的门、下一门和未决失败。
+`doctor.py` 只检查 NumPy、Matplotlib、XeLaTeX、ctex 和中文字体，并生成最小测试图、中文 PDF 和报告；它不会自动安装依赖。
 
 ### 2. 创建项目并导入题面
 
@@ -92,16 +90,16 @@ python3 scripts/triad.py record-human ../my-modeling-project \
 
 在路线门确认 baseline、主方法、评价指标、预算、停止条件和独立复核方式。之后才让执行代理运行数据审计、模型代码、实验和稳健性检查。
 
-这一阶段需要的专业能力包括：
+28-skill 套件可以在这里提供专业工作，例如：
 
-- 数据审计；
-- 方法筛选；
-- 代码生成（Python 或 MATLAB）；
-- 稳健性检验；
-- 图表生成；
-- 论文分节写作。
+- `data-auditor-cleaner`：数据审计；
+- `method-selector`：方法筛选；
+- `python-model-code-generator` 或 `matlab-model-code-generator`：代码生成；
+- `robustness-checker`：稳健性检验；
+- `math-figure-generator`：图表生成；
+- `paper-section-writer`：论文写作。
 
-这些工作由执行代理直接完成即可；如果你自己（或你的 AI 环境）有等价的专用技能，也可以接上。本 Skill 不自带这些阶段技能，不替代它们，也不自动决定使用哪个模型。
+本 Skill 不替代这些技能，也不自动决定使用哪个模型。
 
 ### 6. 独立审核和失败修复
 
@@ -116,8 +114,6 @@ python3 scripts/triad.py record-review ../my-modeling-project \
 
 如果审核拒绝，必须保留原失败、生成新版本、重新审核。未关闭的 blocker 不允许关门或冻结。
 
-两点约束：`record-review` 默认记为独立审核；如果只有同一上下文自查，必须加 `--self-review-only` 如实标注，这类 PASS 会入账但不能用于关门。关门还要求前序门均已关闭，且独立 PASS 晚于该门最近一次人工批准（否则需要重新审核）。
-
 需要打包审核材料时：
 
 ```bash
@@ -128,30 +124,13 @@ python3 scripts/triad.py review-packet ../my-modeling-project
 
 ### 7. 登记论文主张和证据链
 
-先为每次代码运行登记台账，再登记主张。每次运行：
-
-```bash
-python3 scripts/triad.py record-run ../my-modeling-project \
-  --run-id Q1-BASELINE-001 --status SUCCEEDED \
-  --command "python code/q1_baseline.py" \
-  --output results/q1_metrics.csv
-```
-
-`--status` 可选 `SUCCEEDED` / `FAILED` / `CANCELLED`；SUCCEEDED 必须声明实际存在的输出文件。
-
 论文里的关键数字和结论登记到 `logs/claims.jsonl`。每条 Claim 必须关联：
 
 - 项目内真实证据文件；
 - 产生这些文件的成功运行；
 - 若已批准，还要关联人工决定和独立审核事件。
 
-```bash
-python3 scripts/triad.py record-claim ../my-modeling-project \
-  --claim-id C-Q1-01 --text "基线模型在验证集上 RMSE=0.83" \
-  --evidence results/q1_metrics.csv --run-id Q1-BASELINE-001
-```
-
-登记时即做校验：引用的运行不存在、未成功、或证据不在该运行的输出里，都会被当场拒绝。之后运行检查：
+运行检查：
 
 ```bash
 python3 scripts/claim_check.py ../my-modeling-project
@@ -177,6 +156,10 @@ HTML 页面用于检查结构、篇幅、表达深度、验证线索、套话、
 图表统一遵守 `references/visual_style.md` 和 `templates/figure_style.json`：低饱和色、统一字体字号、扁平风格、无阴影/3D/渐变，并按表达目的选择图表类型。
 
 这个工具不计算 AI 百分比，不自动改写论文，也不建议为了降低所谓 AI 率而删除真实 AI 使用披露。
+
+论文默认目标约 25 页，允许 20–30 页。每个子问题都要有自己的“问题分析 → 模型建立 → 模型求解 → 结果与检验 → 局限”闭环，不能把多道题的结果只压进一张总表。首页、中文大标题、正文层级、横线表格、参考文献和按问题拆分的支撑材料，按 [论文版式档案](references/paper_format_profile.md) 执行。页数超出时先删重复叙述和无信息装饰，不删关键推导、证据或限制。
+
+生成论文时使用 `templates/paper_layout.json` 作为版式合同；它是默认配置，不是对官方当年模板的替代。若官方模板与它冲突，以官方要求为准并在合规台账中记录调整。
 
 ### 9. 合规、终审和冻结
 
@@ -206,9 +189,9 @@ python3 scripts/triad.py freeze ../my-modeling-project \
 
 如果只有同一个 AI 上下文自查，状态必须写成 `SELF_REVIEW_ONLY`，不能冒充独立审核。
 
-## 与阶段技能的关系
+## 与 28-skill 套件的关系
 
-本仓库是自包含的：项目骨架、门控脚本、模板和检查工具全在里面，克隆即可用。阶段专业技能（数据审计、方法筛选、代码生成等）回答"这个阶段要生成和检查哪些专业产物"；本 Skill 回答"谁有决定权、谁不能自证、证据不够时什么时候停"。作者本地另有一套此类技能，但未随本仓库发布，也不是使用前提。
+28-skill 套件主要回答“这个阶段要生成和检查哪些专业产物”；本 Skill 主要回答“谁有决定权、谁不能自证、证据不够时什么时候停”。两者可以一起使用，也可以先只使用本 Skill 的项目骨架和门控脚本。
 
 ## 常见误解
 
@@ -241,6 +224,8 @@ python3 scripts/triad.py freeze ../my-modeling-project \
 - [五条铁律](references/five_rules.md)；
 - [论文对比与写作自查](references/paper_comparison.md)；
 - [图表视觉规范](references/visual_style.md)；
+- [论文版式与篇幅档案](references/paper_format_profile.md)；
+- [论文版式配置](templates/paper_layout.json)；
 - [官方合规清单](references/official_compliance.md)；
 - [两个脱敏案例](examples/benchmark_01_lessons.md) 和 [B02 案例](examples/benchmark_02_case_study.md)。
 
