@@ -69,12 +69,23 @@ def pdf_pages(path: Path) -> int | None:
         return None
 
 
+def abstract_counts(text: str) -> tuple[int, int]:
+    start = text.find("摘要")
+    if start < 0:
+        return 0, 0
+    stops = [p for p in (text.find("关键词", start + 2), text.find("关键字", start + 2)) if p >= 0]
+    end = min(stops) if stops else min(len(text), start + 5000)
+    section = text[start + 2:end]
+    return len(section), sum("\u4e00" <= c <= "\u9fff" for c in section)
+
+
 def metrics(text: str, source: Path | None = None) -> dict:
     sentences = [s.strip() for s in re.split(r"[。！？!?；;]+", text) if s.strip()]
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     headings = re.findall(r"^\s{0,3}#{1,6}\s+.+$|^\s*(?:第[一二三四五六七八九十]+[章节问]|摘要|结论|参考文献|附录).*$", text, flags=re.M)
     chinese = re.findall(r"[\u4e00-\u9fff]", text)
     latin_words = re.findall(r"[A-Za-z0-9_]+", text)
+    abstract_chars, abstract_chinese_chars = abstract_counts(text)
     generic = {phrase: text.count(phrase) for phrase in GENERIC_PHRASES if text.count(phrase)}
     strong = {phrase: text.count(phrase) for phrase in STRONG_CLAIMS if text.count(phrase)}
     evidence_hits = sum(text.count(word) for word in EVIDENCE_WORDS)
@@ -84,6 +95,7 @@ def metrics(text: str, source: Path | None = None) -> dict:
     return {
         "chars": len(text), "chinese_chars": len(chinese), "latin_tokens": len(latin_words),
         "pages": pdf_pages(source) if source else None,
+        "abstract_chars": abstract_chars, "abstract_chinese_chars": abstract_chinese_chars,
         "paragraphs": len(paragraphs), "sentences": len(sentences),
         "avg_sentence_chars": round(sum(len(s) for s in sentences) / len(sentences), 1) if sentences else 0,
         "headings": len(headings), "figure_mentions": len(re.findall(r"图\s*\d+|Figure\s*\d+", text, re.I)),
@@ -95,7 +107,7 @@ def metrics(text: str, source: Path | None = None) -> dict:
     }
 
 
-def flags(candidate: dict, decision_count: int | None, min_pages: int = 20, max_pages: int = 30) -> list[dict]:
+def flags(candidate: dict, decision_count: int | None, min_pages: int = 20, max_pages: int = 30, abstract_min_chinese: int = 700) -> list[dict]:
     result: list[dict] = []
     if sum(candidate["generic_phrases"].values()) >= 5:
         result.append({"level": "REVIEW", "title": "套话密度偏高", "detail": "常见转折/总结短语累计出现较多；请改成与你的具体数据和判断有关的句子。"})
@@ -110,6 +122,9 @@ def flags(candidate: dict, decision_count: int | None, min_pages: int = 20, max_
     pages = candidate.get("pages")
     if isinstance(pages, int) and not (min_pages <= pages <= max_pages):
         result.append({"level": "REVIEW", "title": "篇幅超出目标区间", "detail": f"当前 {pages} 页；默认目标为 {min_pages}-{max_pages} 页，建议围绕约 25 页压缩或补充。"})
+    abstract_cn = candidate.get("abstract_chinese_chars")
+    if isinstance(abstract_cn, int) and abstract_cn < abstract_min_chinese:
+        result.append({"level": "HIGH", "title": "摘要内容密度偏低", "detail": f"可提取中文摘要约 {abstract_cn} 字；建议补足问题、方法、关键结果、验证和边界，使首页摘要区达到约 70%–80% 的可用高度且不超过一页。"})
     return result
 
 
@@ -134,8 +149,8 @@ def style_checks(path: Path | None) -> list[dict]:
 
 
 def table_rows(candidate: dict, references: list[tuple[str, dict]]) -> str:
-    keys = ("pages", "chinese_chars", "paragraphs", "sentences", "headings", "figure_mentions", "table_mentions", "citation_markers", "equation_markers", "avg_sentence_chars")
-    labels = {"pages": "页数", "chinese_chars": "中文字符", "paragraphs": "段落", "sentences": "句子", "headings": "标题", "figure_mentions": "图引用", "table_mentions": "表引用", "citation_markers": "引用标记", "equation_markers": "公式标记", "avg_sentence_chars": "平均句长"}
+    keys = ("pages", "abstract_chinese_chars", "chinese_chars", "paragraphs", "sentences", "headings", "figure_mentions", "table_mentions", "citation_markers", "equation_markers", "avg_sentence_chars")
+    labels = {"pages": "页数", "abstract_chinese_chars": "摘要中文字符", "chinese_chars": "中文字符", "paragraphs": "段落", "sentences": "句子", "headings": "标题", "figure_mentions": "图引用", "table_mentions": "表引用", "citation_markers": "引用标记", "equation_markers": "公式标记", "avg_sentence_chars": "平均句长"}
     rows = [f"<tr><th>候选稿</th>{''.join(f'<td>{html.escape(str(candidate.get(k, 0)))}</td>' for k in keys)}</tr>"]
     for name, item in references:
         rows.append(f"<tr><th>{html.escape(name)}</th>{''.join(f'<td>{html.escape(str(item.get(k, 0)))}</td>' for k in keys)}</tr>")
@@ -163,7 +178,7 @@ small{{color:#667085}} ul{{padding-left:22px}}
 <div class="note warning"><b>使用边界：</b>这不是 AI 率检测器，也不提供可信的“AI 百分比”。提示项是可解释的写作、证据和人类贡献风险；请由作者决定修改，并保留真实 AI 使用披露。</div>
 <p><small>生成时间：{generated}　候选稿：{html.escape(args.paper.name)}</small></p>
 <h2>一、候选稿指标</h2><div class="card"><ul>
-<li>页数：{candidate.get('pages') if candidate.get('pages') is not None else '未读取'}（目标 20–30 页，约 25 页）；中文字符：{candidate['chinese_chars']}；段落：{candidate['paragraphs']}；句子：{candidate['sentences']}；平均句长：{candidate['avg_sentence_chars']}</li>
+<li>页数：{candidate.get('pages') if candidate.get('pages') is not None else '未读取'}（目标 20–30 页，约 25 页）；摘要中文字符：{candidate.get('abstract_chinese_chars', 0)}；中文字符：{candidate['chinese_chars']}；段落：{candidate['paragraphs']}；句子：{candidate['sentences']}；平均句长：{candidate['avg_sentence_chars']}</li>
 <li>标题：{candidate['headings']}；图引用：{candidate['figure_mentions']}；表引用：{candidate['table_mentions']}；公式标记：{candidate['equation_markers']}；引用标记：{candidate['citation_markers']}</li>
 <li>Q1–Q4 识别：{html.escape(json.dumps(candidate['question_hits'], ensure_ascii=False))}；人类决策记录数：{decision_count if decision_count is not None else '未提供'}</li>
 </ul></div>
@@ -205,6 +220,7 @@ def main() -> int:
     parser.add_argument("--decision-log", type=Path)
     parser.add_argument("--min-pages", type=int, default=20, help="advisory target minimum page count (default: 20)")
     parser.add_argument("--max-pages", type=int, default=30, help="advisory target maximum page count (default: 30)")
+    parser.add_argument("--abstract-min-chinese", type=int, default=700, help="advisory minimum Chinese characters in abstract (default: 700)")
     args = parser.parse_args()
     if not args.paper.is_file():
         print(f"ERROR: paper not found: {args.paper}", file=sys.stderr)
@@ -224,10 +240,10 @@ def main() -> int:
         if ref_text.strip():
             references.append((path.name, metrics(ref_text, path)))
     count = decision_count(args.decision_log)
-    if args.min_pages < 1 or args.max_pages < args.min_pages:
-        print("ERROR: invalid page range", file=sys.stderr)
+    if args.min_pages < 1 or args.max_pages < args.min_pages or args.abstract_min_chinese < 0:
+        print("ERROR: invalid page or abstract range", file=sys.stderr)
         return 2
-    findings = flags(candidate, count, args.min_pages, args.max_pages)
+    findings = flags(candidate, count, args.min_pages, args.max_pages, args.abstract_min_chinese)
     style = style_checks(args.figure_manifest)
     output = args.output_html.expanduser().resolve()
     if output.exists():
