@@ -85,6 +85,39 @@ class Workflow(unittest.TestCase):
     def test_draft_revision_and_approval(self):
         h=self.route();self.execute();self.claim();self.claim();r=self.review()
         self.call('approve-claim','--claim-id','C1','--decision-ref',h['event_id'],'--review-ref',r['event_id']);self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+    def test_stale_claims_can_be_repaired_individually(self):
+        for first,second in (('C1','C2'),('C2','C1')):
+            with self.subTest(first=first):
+                self.p=self.base/f'repair-{first}'
+                self.call('start');(self.p/'raw/problem.txt').write_text('synthetic task')
+                human=self.route();self.execute()
+                for cid in ('C1','C2'):
+                    self.call('record-claim','--claim-id',cid,'--text',cid,'--evidence','results/metric.csv','--run-id','R1')
+                self.review();self.call('close-gate','--gate-id','RESULTS')
+                (self.p/'code/extra.py').write_text('# new local code')
+                self.call('validate',ok=False)
+                rerun=self.call('run','--run-id','R2','--output','results/metric-v2.csv','--',sys.executable,'-c',"from pathlib import Path;Path('results/metric-v2.csv').write_text('metric\\n2\\n')")
+                # The edited claim must still trace every file to its own run.
+                self.call('record-claim','--claim-id',first,'--text',first,'--evidence','results/metric.csv','--run-id','R2',ok=False)
+                self.call('record-claim','--claim-id',first,'--text',first,'--evidence','results/metric-v2.csv','--run-id','R2')
+                invalid=self.call('validate',ok=False)
+                self.assertTrue(any(e.startswith(second+':') for e in invalid['errors']))
+                self.assertFalse(any(e.startswith(first+':') for e in invalid['errors']))
+                review=self.call('record-review','--gate-id','RESULTS','--verdict','PASS','--context-id','synthetic-independent','--evidence','results/metric-v2.csv')
+                self.call('approve-claim','--claim-id',first,'--decision-ref',rerun['event_id'],'--review-ref',review['event_id'],ok=False)
+                self.call('approve-claim','--claim-id',first,'--decision-ref',human['event_id'],'--review-ref',review['event_id'])
+                # Partial repair permits editing but not global acceptance.
+                self.call('validate',ok=False)
+                self.call('close-gate','--gate-id','RESULTS',ok=False)
+                self.call('freeze','--version','partial','--confirmation','synthetic',ok=False)
+                self.call('record-claim','--claim-id',second,'--text',second,'--evidence','results/metric-v2.csv','--run-id','R2')
+                review=self.call('record-review','--gate-id','RESULTS','--verdict','PASS','--context-id','synthetic-independent','--evidence','results/metric-v2.csv')
+                self.call('approve-claim','--claim-id',first,'--decision-ref',human['event_id'],'--review-ref',review['event_id'])
+                self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+                self.call('close-gate','--gate-id','RESULTS')
+                (self.p/'paper/final.pdf').write_bytes(b'%PDF-1.4\n'+b' '*150)
+                self.review('DELIVERY');self.call('close-gate','--gate-id','DELIVERY');self.freeze()
+                self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
     def test_run_cannot_impersonate_approval(self):
         self.route();r=self.execute();self.claim();self.call('approve-claim','--claim-id','C1','--decision-ref',r['event_id'],'--review-ref',r['event_id'],ok=False)
     def test_all_evidence_must_be_traced(self):

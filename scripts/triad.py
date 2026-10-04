@@ -507,7 +507,8 @@ def handle(args, p):
             if not data['fingerprints']:
                 raise ValueError('claim needs evidence')
         trial = dict(schema_version='2.0', event_id='trial-' + uuid.uuid4().hex, type='claim', **data)
-        errors = check_claims(p, events + [trial])
+        # Validate this edit; stale sibling claims still block global acceptance.
+        errors = check_claims(p, [e for e in events if e['type'] != 'claim'] + [trial])
         if errors:
             raise ValueError('; '.join(errors))
         return append(p, 'claim', **data)
