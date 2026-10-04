@@ -38,7 +38,7 @@ python3 scripts/triad.py close-gate ../my-project --gate-id ROUTE
 
 题意、假设、指标和预算写入这些真实决定即可，不另填风险卡。理由可选，不以字数判断实质贡献。
 
-代理将代码放入项目 code/，使用 run 自动保存运行记录。输出使用新版本文件名；命令在项目目录运行，不经过 shell。题面附件和命令直接引用的脚本自动绑定；额外导入模块、外部数据等依赖使用可重复的 `--input-ref` 登记：
+代理将代码放入项目 code/，使用 run 自动保存运行记录。输出使用新版本文件名；命令在项目目录运行，不经过 shell。全部 raw/ 附件、code/ 文件（排除 __pycache__、.pyc/.pyo）和命令直接引用的项目文件自动绑定；其他项目内依赖用可重复的 `--input-ref` 登记。code/ 的新增、修改或删除都会保守判定旧运行失效，包括无关代码；尚未记录完整代码快照的旧运行必须重跑。外部依赖先复制到项目内：
 
 ```bash
 python3 scripts/triad.py run ../my-project --run-id R1 --output results/metrics-v1.csv \
@@ -85,7 +85,7 @@ python3 scripts/triad.py freeze ../my-project --version v1 \
   --confirmation "我确认交付这一版，已核对结果、论文和支撑材料。"
 ```
 
-freeze 重新检查有效审核、运行、Claim 和 PDF，再保存 releases/v1/ 快照与指纹清单。PDF 文件头检查仅证明存在候选 PDF；实际缺字、溢出、图表和页面问题必须由交付审核查看。冻结不提交比赛材料。
+freeze 重新检查有效审核、运行、Claim 和 PDF，再保存 releases/v1/ 快照与 SHA-256 清单（包含 events.jsonl 副本）。可直接执行 `python3 scripts/hash_check.py --manifest ../my-project/releases/v1/manifest.json` 核验；既有旧快照不重写。PDF 文件头检查仅证明存在候选 PDF；实际缺字、溢出、图表和页面问题必须由交付审核查看。冻结不提交比赛材料。
 
 ## 修复与继续
 
@@ -106,7 +106,9 @@ python3 scripts/triad.py reopen ../my-project ../my-project-v2
 
 ## 文件与兼容性
 
-只有 logs/events.jsonl 是权威记录；状态、故障与 Claim 都从事件生成，不再手动维护 project_state.json、十套专用台账或门注册表。运行控制台输出作为证据保存在 logs/，审核包在 reviews/，交付快照在 releases/。
+只有 logs/events.jsonl 是权威记录；状态、故障与 Claim 都从事件生成，不再手动维护 project_state.json、十套专用台账或门注册表。运行控制台输出（包括超时前已捕获的 stdout/stderr）保存在 logs/，审核包在 reviews/，交付快照在 releases/。本地写锁由操作系统管理，持有进程退出后自动释放；write.lock 文件保留不代表有人持锁，不要在运行中删除它。升级前先停止旧版写进程，不混用两版锁实现。
+
+初始化与查询统一使用 `triad.py start` 和 `triad.py status`；已删除重复的 init_project.py 与 next。claim_check.py 保留“只核验 Claim”的范围，validate 在冻结后还会检查交付和快照。
 
 这是 2.0 项目格式，旧版九门项目不原地迁移或覆盖。脚本会明确拒绝旧版目录；保留旧项目，在新目录试用，并按真实情况导入原始附件。旧的三套测试已由 [生命周期测试](validation/test_workflow.py) 替代。
 

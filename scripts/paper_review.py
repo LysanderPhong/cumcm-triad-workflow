@@ -77,10 +77,14 @@ def pdf_pages(path: Path) -> int | None:
 
 
 def abstract_counts(text: str) -> tuple[int, int]:
-    tex = re.search(r'\\begin\{abstract\}(.*?)\\end\{abstract\}', text, flags=re.S)
-    if tex:
-        section = tex.group(1)
-        return len(section), sum('\u4e00' <= c <= '\u9fff' for c in section)
+    if re.search(r'\\(?:begin|(?:sub)*section|bfseries)\b', text):
+        # Count visible source text, not TeX comments or font commands.
+        text = re.sub(r'(?m)(?<!\\)%[^\n]*', '', text)
+        tex = re.search(r'\\begin\{abstract\}(.*?)\\end\{abstract\}', text, flags=re.S)
+        if tex:
+            text = '摘要\n' + tex.group(1) + '\n关键词：'
+        text = re.sub(r'\\(?:begin|end)\{[^}]*\}|\\fontsize\{[^}]*\}\{[^}]*\}|\\(?:vspace|hspace)\*?\{[^}]*\}', '', text)
+        text = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?', '', text).translate(str.maketrans('', '', '{}'))
     match = re.search(r'(?im)^\s*(?:#{1,6}\s*)?(?:摘要|摘\s+要|abstract)\s*[:：]?\s*$', text)
     if not match:
         return 0, 0
@@ -209,7 +213,7 @@ def table_rows(candidate: dict, references: list[tuple[str, dict]]) -> tuple[str
 
 def render(args: argparse.Namespace, candidate: dict, references: list[tuple[str, dict]], warnings: list[str], findings: list[dict], style: list[dict], decision_count: int | None) -> str:
     rows, headers = table_rows(candidate, references)
-    finding_html = "".join(f"<li class='{html.escape(x['level'])}'><b>{html.escape(x['title'])}</b>：{html.escape(x['detail'])}</li>" for x in findings + style)
+    finding_html = "".join(f"<li class='{html.escape(x['level'])}'><b>{html.escape(x['title'])}</b>：{html.escape(x['detail'])}</li>" for x in findings)
     warning_html = "".join(f"<li>{html.escape(w)}</li>" for w in warnings) or "<li>无</li>"
     generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     payload = json.dumps({"generated_at": generated, "candidate": candidate, "references": references, "findings": findings, "style_findings": style}, ensure_ascii=False).replace('<', '\\u003c')

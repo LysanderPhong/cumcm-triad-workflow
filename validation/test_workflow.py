@@ -5,11 +5,13 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
 import paper_review
+import triad
 class Workflow(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.base=Path(self.tmp.name);self.p=self.base/'project';self.call('start')
@@ -44,6 +46,14 @@ class Workflow(unittest.TestCase):
     def test_complete_workflow_snapshot(self):
         self.ready();self.freeze();self.assertTrue((self.p/'releases/v1/paper/final.pdf').exists())
         self.assertTrue(self.call('status')['frozen']);self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+        manifest=self.p/'releases/v1/manifest.json'
+        cmd=[sys.executable,str(ROOT/'scripts/hash_check.py'),'--manifest',str(manifest)]
+        result=subprocess.run(cmd,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('events.jsonl',{f['path'] for f in json.loads(manifest.read_text())['files']})
+        (manifest.parent/'events.jsonl').write_text('tampered')
+        self.assertEqual(subprocess.run(cmd,capture_output=True).returncode,1)
+        self.call('validate',ok=False)
     def test_snapshot_tampering_detected(self):
         self.ready();self.freeze();(self.p/'releases/v1/results/metric.csv').write_text('changed')
         self.call('validate',ok=False)
@@ -85,8 +95,25 @@ class Workflow(unittest.TestCase):
         self.call('validate',ok=False);self.call('close-gate','--gate-id','RESULTS',ok=False)
     def test_changed_input_invalidates(self):
         self.route();self.execute();self.claim();(self.p/'raw/problem.txt').write_text('changed');self.call('validate',ok=False)
-    def test_unrelated_plot_script_preserves_run(self):
-        self.route();self.execute();self.claim();(self.p/'code/plot.py').write_text('# plot only');self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+    def test_code_change_invalidates_conservatively(self):
+        self.execute();self.claim();(self.p/'code/plot.py').write_text('# plot only');self.call('validate',ok=False)
+    def test_imported_helper_change_and_removal_invalidates(self):
+        helper=self.p/'code/helper.py';helper.write_text('value=1\n')
+        (self.p/'code/model.py').write_text("from pathlib import Path\nfrom helper import value\nPath('results/helper.txt').write_text(str(value))\n")
+        self.call('run','--run-id','R1','--output','results/helper.txt','--',sys.executable,'code/model.py')
+        self.call('record-claim','--claim-id','C1','--text','helper value','--evidence','results/helper.txt','--run-id','R1')
+        self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+        helper.write_text('value=2\n');self.call('validate',ok=False)
+        helper.write_text('value=1\n');self.assertEqual(self.call('validate')['status'],'VALID_RECORDS')
+        helper.unlink();self.call('validate',ok=False)
+    def test_legacy_run_requires_new_execution(self):
+        run=self.execute();run.pop('tracks_code',None)
+        self.assertFalse(triad.current_run(self.p,run))
+    def test_removed_input_during_execution_is_recorded_failure(self):
+        script="from pathlib import Path;Path('raw/problem.txt').unlink();Path('results/changed.txt').write_text('1')"
+        run=self.call('run','--run-id','CHANGED','--output','results/changed.txt','--',sys.executable,'-c',script,ok=False)
+        self.assertEqual(run['status'],'FAILED')
+        self.assertIn('inputs changed',(self.p/run['execution_log']).read_text())
     def test_late_input_preserves_human_gates(self):
         self.route();self.execute();self.review();self.call('close-gate','--gate-id','RESULTS');f=self.base/'extra.txt';f.write_text('extra');self.call('ingest',str(f))
         s=self.call('status');self.assertEqual(s['closed_gates'],['SCOPE','ROUTE']);self.assertEqual(s['current_gate'],'RESULTS')
@@ -105,6 +132,27 @@ class Workflow(unittest.TestCase):
         for rid,script in [('FAIL','raise SystemExit(3)'),('TIME','import time;time.sleep(1)')]:
             self.call('run','--run-id',rid,'--output',f'results/{rid}.txt','--timeout','0.1','--',sys.executable,'-c',script,ok=False)
         runs=[json.loads(l) for l in (self.p/'logs/events.jsonl').read_text().splitlines() if json.loads(l)['type']=='run'];self.assertEqual([r['status'] for r in runs],['FAILED','FAILED'])
+    def test_timeout_preserves_stdout_stderr(self):
+        script="import sys,time;print('已完成步骤',flush=True);print('warning before timeout',file=sys.stderr,flush=True);time.sleep(10)"
+        run=self.call('run','--run-id','TIME','--output','results/timeout.txt','--timeout','0.5','--',sys.executable,'-c',script,ok=False)
+        log=(self.p/run['execution_log']).read_text()
+        self.assertIn('已完成步骤',log.splitlines());self.assertIn('warning before timeout',log.splitlines());self.assertIn('timed out',log)
+    def test_killed_lock_owner_recovery_and_live_exclusion(self):
+        script="import sys,time;from pathlib import Path;import triad\nwith triad.locked(Path(sys.argv[1])):\n (Path(sys.argv[1])/'logs/holder-ready').touch()\n time.sleep(60)\n"
+        child=subprocess.Popen([sys.executable,'-u','-c',script,str(self.p)],cwd=ROOT/'scripts',stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            # A bounded readiness poll avoids depending on machine speed.
+            deadline=time.monotonic()+5
+            while not (self.p/'logs/holder-ready').exists() and child.poll() is None and time.monotonic()<deadline:
+                time.sleep(0.01)
+            self.assertTrue((self.p/'logs/holder-ready').exists())
+            self.call('record-failure','--description','active lock',ok=False)
+            child.kill();child.communicate(timeout=5)
+            self.call('record-failure','--description','after killed owner')
+            self.call('record-failure','--description','subsequent write')
+        finally:
+            if child.poll() is None:child.kill()
+            child.communicate(timeout=5)
     def test_repeat_packet_has_unique_name(self):self.assertNotEqual(self.call('review-packet')['packet'],self.call('review-packet')['packet'])
     def test_unknown_event_refused(self):
         with (self.p/'logs/events.jsonl').open('a') as f:f.write(json.dumps({'schema_version':'2.0','event_id':'bad','type':'invented'})+'\n')
@@ -114,12 +162,20 @@ class Workflow(unittest.TestCase):
         self.call('record-claim','--claim-id','C1','--text','x','--evidence','results/link/x.csv','--run-id','R1',ok=False)
 
 class Presentation(unittest.TestCase):
+    def test_repository_tex_template_abstract(self):
+        text,warnings=paper_review.extract(ROOT/'templates/paper.tex')
+        expected='简述实际任务、约束和总体思路。以下为结构占位，不是可提交的摘要。针对问题一，说明关键方法和验证过的结果；仅对关键方法或数值加粗。根据实际子问题补充摘要段落，最后说明必要的验证和结论边界。不复制参考论文的数据。'
+        count=sum('\u4e00'<=c<='\u9fff' for c in expected)
+        self.assertFalse(warnings);self.assertEqual(paper_review.metrics(text)['abstract_chinese_chars'],count)
+        commented=text.replace('简述实际任务','% 注释文字不属于摘要\n简述实际任务')
+        self.assertEqual(paper_review.metrics(commented)['abstract_chinese_chars'],count)
     def test_tex_abstract_headings_citations(self):
         m=paper_review.metrics('\\begin{abstract}简短摘要。\\end{abstract}\n\\section{问题一}\n正文\\cite{source}')
         self.assertEqual(m['abstract_chinese_chars'],4);self.assertEqual(m['headings'],1);self.assertEqual(m['citation_markers'],1)
     def test_chinese_headings_dynamic_questions_no_quota(self):
         m=paper_review.metrics('摘要\n简短摘要。\n关键词：统计\n一、问题重述\n四、问题一\n五、问题五\n')
         self.assertEqual(m['headings'],4);self.assertEqual(m['question_hits'],{'一':1,'五':1});self.assertFalse(any('摘要' in f['title'] or '篇幅' in f['title'] for f in paper_review.flags(m,None)))
+        self.assertEqual(paper_review.metrics('摘要\n占比50%并保留正文。\n关键词：统计')['abstract_chinese_chars'],7)
     def test_docx_runs_joined(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'paper.docx'
@@ -135,4 +191,5 @@ class Presentation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'paper.md';p.write_text('摘要\n简短摘要。\n关键词：统计\n一、问题重述\n');out=Path(tmp)/'review.html';cmd=[sys.executable,str(ROOT/'scripts/paper_review.py'),'--paper',str(p),'--output-html',str(out)]
             subprocess.run(cmd,check=True,capture_output=True);r=subprocess.run(cmd,check=True,capture_output=True,text=True);self.assertNotEqual(json.loads(r.stdout)['output_html'],str(out));self.assertIn('const storageKey=',out.read_text())
+            self.assertEqual(out.read_text().count('<b>未提供 figure_manifest.json</b>'),1)
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -18,13 +17,18 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from hash_check import check_file as digest
+
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import fcntl
 
 GATES = ('SCOPE', 'ROUTE', 'RESULTS', 'DELIVERY')
 HUMAN_GATES = {'SCOPE', 'ROUTE'}
 REVIEW_GATES = {'RESULTS', 'DELIVERY'}
 DIRECTORIES = ('raw', 'code', 'results', 'paper', 'reviews', 'compliance', 'logs', 'releases')
 JOURNAL = 'logs/events.jsonl'
-_DIGEST_CACHE = {}
 EVENT_REQUIRED = {
     'initialized': (), 'inputs_ingested': ('fingerprints',),
     'human_decision': ('gate_id', 'selected', 'contribution', 'status', 'fingerprints'),
@@ -39,20 +43,6 @@ EVENT_REQUIRED = {
 
 def now():
     return datetime.now(timezone.utc).isoformat()
-
-
-def digest(path):
-    stat = path.stat()
-    key = (str(path), stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
-    if key in _DIGEST_CACHE:
-        return _DIGEST_CACHE[key]
-    h = hashlib.sha256()
-    with path.open('rb') as source:
-        for block in iter(lambda: source.read(1024 * 1024), b''):
-            h.update(block)
-    result = h.hexdigest()
-    _DIGEST_CACHE[key] = result
-    return result
 
 
 def project_path(value):
@@ -106,16 +96,26 @@ def rows(p):
 
 @contextmanager
 def locked(p):
-    lock = p / 'logs/write.lock'
-    try:
-        with lock.open('x', encoding='utf-8') as handle:
-            handle.write(str(uuid.uuid4()))
-    except FileExistsError:
-        raise ValueError('another write is active; retry after it finishes')
-    try:
-        yield
-    finally:
-        lock.unlink(missing_ok=True)
+    # Keep one inode: unlinking an advisory lock can admit two writers.
+    with (p / 'logs/write.lock').open('a+b') as handle:
+        if sys.platform == 'win32' and handle.tell() == 0:
+            handle.write(b'0'); handle.flush()
+        handle.seek(0)
+        try:
+            if sys.platform == 'win32':
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise ValueError('another write is active; retry after it finishes') from exc
+        try:
+            yield
+        finally:
+            if sys.platform == 'win32':
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def append(p, kind, **fields):
@@ -163,14 +163,16 @@ def unchanged(p, fingerprints):
 
 
 def run_inputs(p, script_refs=()):
-    refs = [f.relative_to(p).as_posix() for f in (p / 'raw').rglob('*') if f.is_file()]
-    return evidence(p, refs + list(script_refs))
+    return {**bundle(p, ('raw', 'code')), **evidence(p, script_refs)}
 
 
 def current_run(p, run):
     saved = run.get('input_fingerprints', {})
     scripts = [ref for ref in saved if not ref.startswith('raw/')]
-    return unchanged(p, run['fingerprints']) and saved == run_inputs(p, scripts)
+    try:
+        return run.get('tracks_code', False) and unchanged(p, run['fingerprints']) and saved == run_inputs(p, scripts)
+    except (ValueError, OSError):
+        return False
 
 
 def latest(events, kind, key):
@@ -181,11 +183,13 @@ def latest(events, kind, key):
     return result
 
 
-def bundle(p):
+def bundle(p, roots=('raw', 'code', 'results', 'paper', 'compliance')):
     # Review binds the actual scientific/production files, including journaled inputs.
     files = []
-    for root in ('raw', 'code', 'results', 'paper', 'compliance'):
+    for root in roots:
         for file in sorted((p / root).rglob('*')):
+            if root == 'code' and ('__pycache__' in file.relative_to(p).parts or file.suffix in {'.pyc', '.pyo'}):
+                continue
             if file.is_symlink():
                 raise ValueError('production tree contains symlink')
             if file.is_file():
@@ -416,9 +420,8 @@ def handle(args, p):
             raise ValueError('human decisions are only needed at SCOPE and ROUTE')
         if not args.selected.strip() or not args.contribution.strip():
             raise ValueError('selected and contribution required; no minimum essay length')
-        row = append(p, 'human_decision', gate_id=g, selected=args.selected, contribution=args.contribution,
+        return append(p, 'human_decision', gate_id=g, selected=args.selected, contribution=args.contribution,
                      rationale=args.rationale, status=args.status, fingerprints=evidence(p, args.evidence))
-        return row
     if command == 'record-review':
         g = gate(args.gate_id)
         if g not in REVIEW_GATES:
@@ -428,17 +431,15 @@ def handle(args, p):
         fingerprints = evidence(p, args.evidence)
         if args.verdict == 'PASS' and not fingerprints:
             raise ValueError('PASS requires evidence')
-        row = append(p, 'review', gate_id=g, verdict=args.verdict, reviewer_context_id=args.context_id,
+        return append(p, 'review', gate_id=g, verdict=args.verdict, reviewer_context_id=args.context_id,
                      same_context_as_executor=args.self_review_only, fingerprints=fingerprints,
                      context=review_context(p, rows(p)), checks=args.check or [], notes=args.notes)
-        return row
     if command == 'record-failure':
         fid = args.failure_id or uuid.uuid4().hex
         if fid in latest(rows(p), 'failure', 'failure_id'):
             raise ValueError('failure_id already exists')
-        row = append(p, 'failure', failure_id=fid, status='OPEN', description=args.description,
+        return append(p, 'failure', failure_id=fid, status='OPEN', description=args.description,
                      fingerprints=evidence(p, args.evidence))
-        return row
     if command == 'close-failure':
         old = latest(rows(p), 'failure', 'failure_id').get(args.failure_id)
         if not old or old['status'] != 'OPEN':
@@ -472,23 +473,26 @@ def handle(args, p):
         try:
             proc = subprocess.run(argv, cwd=p, capture_output=True, text=True, errors='replace', timeout=args.timeout)
             console, code = proc.stdout + '\n' + proc.stderr, proc.returncode
-        except (subprocess.TimeoutExpired, OSError) as exc:
+        except subprocess.TimeoutExpired as exc:
+            output = [part.decode('utf-8', errors='replace') if isinstance(part, bytes) else part or ''
+                      for part in (exc.stdout, exc.stderr)]
+            console, code = '\n'.join(output + [str(exc)]), None
+        except OSError as exc:
             console, code = str(exc), None
         log = p / 'logs' / ('execution-' + uuid.uuid4().hex + '.txt')
         log.write_text(console, encoding='utf-8')
         success = code == 0
         try:
             fingerprints = evidence(p, args.output) if success else {}
+            if run_inputs(p, script_refs) != input_fingerprints:
+                raise ValueError('run inputs changed during execution; rerun with current inputs')
         except ValueError as exc:
             success, fingerprints = False, {}
             log.write_text(console + '\n' + str(exc), encoding='utf-8')
-        if run_inputs(p, script_refs) != input_fingerprints:
-            success = False
-        row = append(p, 'run', run_id=rid, status='SUCCEEDED' if success else 'FAILED',
+        return append(p, 'run', run_id=rid, status='SUCCEEDED' if success else 'FAILED',
                      argv=argv, exit_code=code, verified_execution=True, fingerprints=fingerprints,
-                     input_fingerprints=input_fingerprints,
+                     input_fingerprints=input_fingerprints, tracks_code=True,
                      execution_log=log.relative_to(p).as_posix())
-        return row
     if command in {'record-claim', 'approve-claim'}:
         events = rows(p)
         old = latest(events, 'claim', 'claim_id').get(args.claim_id)
@@ -506,8 +510,7 @@ def handle(args, p):
         errors = check_claims(p, events + [trial])
         if errors:
             raise ValueError('; '.join(errors))
-        row = append(p, 'claim', **data)
-        return row
+        return append(p, 'claim', **data)
     if command == 'close-gate':
         g = gate(args.gate_id)
         if state(p)['current_gate'] != g:
@@ -537,11 +540,13 @@ def handle(args, p):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(p / ref, dest)
             shutil.copy2(p / JOURNAL, staging / 'events.jsonl')
-            if not unchanged(p, fingerprints):
+            if not unchanged(p, fingerprints) or not unchanged(staging, fingerprints):
                 raise ValueError('files changed during freeze; retry review')
-            (staging / 'manifest.json').write_text(json.dumps(fingerprints, indent=2, ensure_ascii=False), encoding='utf-8')
+            files = {**fingerprints, 'events.jsonl': digest(staging / 'events.jsonl')}
+            manifest = dict(algorithm='sha256', files=[dict(path=ref, sha256=sha) for ref, sha in files.items()])
+            (staging / 'manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
             staging.replace(release)
-            return append(p, 'freeze', version=args.version, confirmation=args.confirmation, fingerprints=fingerprints)
+            return append(p, 'freeze', version=args.version, confirmation=args.confirmation, fingerprints=files)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             shutil.rmtree(release, ignore_errors=True)
@@ -574,7 +579,7 @@ def main():
         return p
     p = sub('start')
     p.add_argument('--input', nargs='*', default=[])
-    for name in ('status', 'next', 'validate', 'review-packet'):
+    for name in ('status', 'validate', 'review-packet'):
         sub(name)
     p = sub('ingest')
     p.add_argument('inputs', nargs='+')
@@ -636,7 +641,7 @@ def main():
             result = start(args)
         else:
             p = require_project(args.project)
-            if args.command in ('status', 'next'):
+            if args.command == 'status':
                 result = status(p)
             elif args.command == 'validate':
                 errors = check_claims(p, rows(p))
