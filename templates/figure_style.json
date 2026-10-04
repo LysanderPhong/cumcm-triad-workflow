@@ -1,11 +1,12 @@
 {
   "schema_version": "1.0",
-  "style_name": "flat-muted-editorial",
-  "status": "OPTIONAL_STARTING_POINT",
+  "style_name": "reference-cumcm-scientific",
+  "status": "REFERENCE_BASED_DEFAULT",
   "fonts": {
-    "family": "Source Han Sans SC",
+    "family": "FandolHei",
     "fallback": [
       "Noto Sans CJK SC",
+      "Source Han Sans SC",
       "PingFang SC",
       "Arial Unicode MS"
     ],
@@ -14,16 +15,17 @@
     "tick_pt": 9,
     "caption_pt": 9,
     "annotation_pt": 9,
-    "final_pdf_minimum_pt_advisory": 8
+    "final_pdf_minimum_pt_advisory": 8,
+    "legend_pt": 9
   },
   "colors": {
     "categorical": [
-      "#587C8C",
-      "#B07A61",
-      "#7E8F67",
-      "#8B7A9E",
-      "#C29A62",
-      "#6C8DA5"
+      "#4665B9",
+      "#A69CEB",
+      "#FF9168",
+      "#C68074",
+      "#7196C7",
+      "#B5A8D5"
     ],
     "sequential": [
       "#EEF3F4",
@@ -32,10 +34,10 @@
       "#719AA3",
       "#4B747E"
     ],
-    "neutral": "#667085",
+    "neutral": "#666666",
     "background": "#FFFFFF",
-    "text": "#263238",
-    "grid": "#D9E1E4"
+    "text": "#262626",
+    "grid": "#E8E8E8"
   },
   "effects": {
     "flat": true,
@@ -55,5 +57,13 @@
     "vector_preferred": true,
     "raster_dpi_advisory": 300,
     "check_after_insertion": true
+  },
+  "layout": {
+    "legend": "compact_inside_when_clear_otherwise_outside",
+    "grid": "light_major_lines",
+    "spines": "thin_neutral",
+    "panel_labels": "(a), (b), ...",
+    "caption": "handled_by_paper_template",
+    "time_panels": "align_x_axes"
   }
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "layout_name": "optional-a4-layout",
-  "status": "OPTIONAL_STARTING_POINT",
+  "layout_name": "reference-cumcm-paper",
+  "status": "REFERENCE_BASED_DEFAULT",
   "abstract": {
     "required_content": [
       "problem_scope",
@@ -10,7 +10,14 @@
       "validation",
       "limitations"
     ],
-    "fit": "check_actual_pdf_and_applicable_template"
+    "fit": "check_actual_pdf_and_applicable_template",
+    "layout": [
+      "centered_title",
+      "centered_abstract_heading",
+      "indented_paragraphs_by_subproblem",
+      "selective_bold_methods_and_key_results",
+      "inline_keywords"
+    ]
   },
   "page": {
     "size": "A4",
@@ -20,26 +27,37 @@
       "left": 25,
       "right": 25
     },
-    "header": "optional_section_title",
-    "footer": "centered_page_number"
+    "header": "none",
+    "footer": "centered_page_number",
+    "page_number_start": 1,
+    "table_of_contents": false
   },
   "typography": {
-    "chinese_body_family": "SimSun",
-    "latin_body_family": "Times New Roman",
+    "chinese_body_family": "FandolSong",
+    "latin_body_family": "Latin Modern Roman",
     "fallback": [
+      "SimSun",
       "Noto Serif CJK SC",
-      "Source Han Serif SC",
-      "Latin Modern Roman"
+      "Source Han Serif SC"
     ],
-    "title_pt": 16,
-    "abstract_heading_pt": 14,
+    "title_pt": 18,
+    "abstract_heading_pt": 17.28,
     "body_pt": 12,
-    "body_leading": 1.5,
+    "body_leading": 1.35,
     "body_first_line_indent_em": 2,
     "level1_heading_style": "Chinese_numeral_bold_centered",
     "level2_heading_style": "decimal_bold_left",
-    "caption_pt": 10,
-    "equation_alignment": "centered"
+    "caption_pt": 12,
+    "equation_alignment": "centered",
+    "body_baseline_pt": 16.2,
+    "paragraph_after_pt": 5,
+    "level1_heading_pt": 17.28,
+    "level2_heading_pt": 14.4,
+    "level3_heading_pt": 12,
+    "equation_numbering": "continuous_right_parentheses",
+    "reference_pt": 10,
+    "appendix_body_pt": 10,
+    "code_pt": 8.5
   },
   "structure": {
     "front_page": [
@@ -55,21 +73,43 @@
       "limitations"
     ],
     "back_matter": [
+      "ai_usage_disclosure_if_applicable",
       "references",
-      "supporting_materials",
-      "problem_split_code_notes"
+      "appendix_results_and_supporting_materials",
+      "appendix_complete_source_code"
+    ],
+    "body_sections": [
+      "problem_restatement_and_analysis",
+      "data_preprocessing_if_needed",
+      "assumptions_and_symbols",
+      "one_section_per_actual_subproblem",
+      "validation_and_sensitivity",
+      "model_evaluation"
     ]
   },
   "tables": {
     "numbering": "continuous",
     "alignment": "center",
     "rules": "horizontal_only",
-    "vertical_rules": false
+    "vertical_rules": false,
+    "caption_position": "above",
+    "body_pt": 11,
+    "style": "three_line",
+    "symbol_columns": [
+      "symbol",
+      "unit",
+      "meaning"
+    ]
   },
   "figures": {
     "numbering": "continuous",
     "alignment": "center",
     "caption_position": "below",
-    "style_profile": "templates/figure_style.json"
-  }
+    "style_profile": "templates/figure_style.json",
+    "placement": "near_first_discussion",
+    "width": "within_text_width",
+    "multipanel": "stacked_shared_time_axis_or_side_by_side_comparison"
+  },
+  "source": "Layout learned from the supplied final CUMCM paper; content and question count are not inherited.",
+  "template": "templates/paper.tex"
 }

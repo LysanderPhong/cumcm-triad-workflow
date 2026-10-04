@@ -1,0 +1,127 @@
+% Reference-based layout. Replace every placeholder with actual evidence.
+% Compile twice: xelatex -interaction=nonstopmode -halt-on-error paper.tex
+\documentclass[UTF8,12pt,a4paper,fontset=fandol]{ctexart}
+\usepackage[margin=25mm,footskip=12mm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,longtable,graphicx,caption,listings,flafter}
+\usepackage[hidelinks]{hyperref}
+\setmainfont{Latin Modern Roman}
+\setmonofont{Latin Modern Mono}
+\pagestyle{plain}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{5pt}
+\AtBeginDocument{\fontsize{12}{16.2}\selectfont}
+\ctexset{
+  section={format=\centering\bfseries\Large,name={,、},number=\chinese{section},
+    aftername=\quad,beforeskip=18pt,afterskip=12pt},
+  subsection={format=\bfseries\large,beforeskip=12pt,afterskip=8pt},
+  subsubsection={format=\bfseries\normalsize,beforeskip=8pt,afterskip=5pt}
+}
+\captionsetup{font=normalsize,labelsep=colon,skip=8pt}
+\captionsetup[table]{position=top}
+\captionsetup[figure]{position=bottom}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\refname}{参考文献}
+\lstset{basicstyle=\ttfamily\fontsize{8.5}{11}\selectfont,
+  breaklines=true,columns=fullflexible,keepspaces=true,showstringspaces=false,
+  numbers=left,numberstyle=\tiny,numbersep=6pt,frame=none}
+% One shared style per role. Do not apply per-page font replacements.
+\newcommand{\tablebody}{\fontsize{11}{14}\selectfont}
+\newcommand{\appendixbody}{\fontsize{10}{13.5}\selectfont}
+\newcommand{\paperfigure}[3][.95\linewidth]{%
+  \begin{figure}[htbp]\centering
+  \includegraphics[width=#1]{#2}\caption{#3}\end{figure}}
+\newcounter{paperappendix}
+\newcommand{\paperappendix}[1]{%
+  \stepcounter{paperappendix}
+  \section*{附录\chinese{paperappendix}、\quad #1}\appendixbody}
+
+\begin{document}
+\begin{center}
+  {\fontsize{18}{24}\selectfont\bfseries 论文题目（替换为实际题名）\par}
+  \vspace{14pt}
+  {\Large\bfseries 摘要\par}
+\end{center}
+\vspace{8pt}
+简述实际任务、约束和总体思路。以下为结构占位，不是可提交的摘要。
+
+针对问题一，说明关键方法和验证过的结果；仅对\textbf{关键方法或数值}加粗。
+
+根据实际子问题补充摘要段落，最后说明必要的验证和结论边界。不复制参考论文的数据。
+
+\noindent\textbf{关键词：}关键词一；关键词二；关键词三
+\clearpage
+
+\section{问题重述与分析}
+\subsection{问题重述}
+填写对象、已知条件、任务和指标。
+\subsection{问题分析}
+填写任务关系及主要难点。
+\subsection{本文的工作与方法特点}
+填写实际完成的方法与工作，不以模板占位充当创新。
+
+\section{数据预处理}
+% Delete or merge this section when the task does not require preprocessing.
+\subsection{数据来源与单位换算}
+填写真实来源、量纲与处理方法。
+\subsection{数据处理与检验}
+填写缺失值、时间对齐或其他实际检查。
+
+\section{模型假设与符号说明}
+\subsection{模型假设}
+逐条填写必要假设及理由。
+\subsection{符号说明}
+主要符号与单位见表\ref{tab:symbols}，按实际模型填写。
+% Long symbol tables continue across pages with the same column header.
+{\tablebody\begin{longtable}{p{.18\linewidth}p{.16\linewidth}p{.55\linewidth}}
+\caption{符号与单位}\label{tab:symbols}\\\toprule
+符号 & 单位 & 含义 \\\midrule\endfirsthead
+\toprule
+符号 & 单位 & 含义 \\\midrule\endhead
+$x$ & 按实际量纲填写 & 替换为实际变量 \\\bottomrule
+\end{longtable}}
+
+\section{问题一：实际任务名称}
+% Repeat/rename this section for the actual number of subproblems.
+\subsection{模型建立}
+填写定义、目标与约束。展示公式使用 equation/align 环境并按需引用：
+\begin{equation}\label{eq:example}
+  y=f(x).
+\end{equation}
+\subsection{模型求解}
+填写实际算法、参数和实现。
+\subsection{结果与分析}
+引用真实结果、表\ref{tab:symbols}及式\eqref{eq:example}，删除示例引用。
+% For an actual figure: \paperfigure{figures/result.pdf}{实际图题及统计口径}
+% Multipanel figures share one overall caption and use (a)/(b) panel labels.
+
+\section{模型检验与灵敏度分析}
+填写实际执行的检验；不适用时合并进各问题结果，不凑实验。
+
+\section{模型评价}
+\subsection{模型的优点}
+填写有证据的优点。
+\subsection{模型的不足}
+填写局限及影响。
+
+\begin{center}\bfseries AI工具使用声明\end{center}
+按真实使用情况和适用规则填写，不能直接提交此占位句。
+
+\clearpage
+% Unnumbered centered title; numeric labels and hanging continuation lines.
+\begingroup\fontsize{10}{13.5}\selectfont
+\begin{thebibliography}{99}
+\bibitem{replace-me} 替换为核验过的文献，正文使用 \verb|\cite{...}| 引用。
+\end{thebibliography}
+\endgroup
+
+\clearpage
+\paperappendix{结果表与支撑材料说明}
+列出题目指定结果、支撑文件清单、环境和真实复现命令。图表编号及页码连续。
+
+\paperappendix{完整可运行源代码}
+按实际使用的程序分节；导入完整源码，不只列入口或伪代码。
+% \lstinputlisting[language=Python]{../code/model.py}
+% Use a CJK-capable listing setup if actual code contains Chinese comments;
+% verify the rendered output rather than silently dropping characters.
+\end{document}

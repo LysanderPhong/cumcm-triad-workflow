@@ -61,7 +61,9 @@ DRAFT Claim 可以重复登记同一 ID 来修订，日志保留每次版本。�
 
 ## 论文、图表与交付
 
-正文根据实际子问题组织“任务、模型、求解、结果与检验、局限”。篇幅、摘要字数和图表数量由题目及用户要求决定，不设凑字数或每问图表配额。示例视觉配置见 [figure_style.json](templates/figure_style.json)，页面配置见 [paper_layout.json](templates/paper_layout.json)。
+默认排版学习用户提供的最终数模论文：摘要首页、中文居中章标题、分问建模、三线表、居中编号公式，以及参考文献和附录。可直接复制并填写 [paper.tex](templates/paper.tex)，用 XeLaTeX 编译两遍；在其他工具中使用 [paper_layout.json](templates/paper_layout.json) 和 [figure_style.json](templates/figure_style.json)。具体样式见 [参考论文版式](references/paper_format_profile.md)，另有用户/赛事模板时优先覆盖。
+
+正文根据实际子问题组织“任务、模型、求解、结果与检验、局限”。篇幅、摘要字数和图表数量由题目及用户要求决定，不设凑字数或每问图表配额；不继承参考论文的题名、数据或固定四问。
 
 ```bash
 python3 scripts/paper_review.py --paper ../my-project/paper/final.pdf \
