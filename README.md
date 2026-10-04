@@ -1,232 +1,117 @@
 # cumcm-triad-workflow
 
-这是给**单人参加数学建模竞赛、使用 AI 协作、希望冲击省级以上成绩**的人用的工作流 Skill。
+轻量的数模 AI 协作 Skill：人决定题意和路线，代理执行并保存证据，独立上下文复核结果，最后由人确认交付。
 
-它不负责替你“自动解题”。它负责把一篇数模论文从题面到冻结版本的过程管起来：
+## 默认流程
 
-- 你决定题意、关键假设、模型路线和最终结论；
-- 执行代理负责代码、实验、整理和修改；
-- 独立审核员负责复核证据、指出问题并阻断不合格结果。
+| 阶段 | 必需动作 |
+|---|---|
+| SCOPE：题意与口径 | 人确认任务、关键假设与评价口径 |
+| ROUTE：路线 | 人确认基线、主方法和预算；已授权的机械工作直接执行 |
+| RESULTS：结果 | 运行模型和检验，登记关键主张，独立审核当前产物 |
+| DELIVERY：交付 | 生成 PDF 和支撑包，独立检查最终页面、图表、引用、匿名与 AI 披露 |
+| 冻结 | 人确认具体版本，保存交付快照 |
 
-它和本地 28-skill 套件是互补关系：28-skill 负责各阶段的专业产物，`cumcm-triad-workflow` 负责“谁能决定、谁要留证据、什么时候必须停下来复核”。
+只有 SCOPE、ROUTE 和最终冻结是默认人工判断点。不再要求每一步填卡、写长理由或逐项批准排版。实质性新假设、评价口径或路线变化回到相应判断点。
 
-当前版本是 **Experimental / Release Candidate**，不是获奖保证，也不是自动论文生成器。
+## 使用方式
 
-## 你实际要做什么
-
-你只需要持续完成三类动作：
-
-1. **做决定**：用自己的话确认题意、假设、路线和主张范围，并把决定记入台账。
-2. **看证据**：检查代码是否真的运行、数字是否能追溯、图表和论文是否符合要求。
-3. **批准或退回**：审核通过才进入下一门；发现问题就退回执行代理修复。
-
-AI 可以完成机械工作，但不能把它自己的建议伪装成人类决定，也不能自己审核并签发通过。
-
-## 一步一步的完整流程
-
-### 1. 准备环境和题面
-
-需要 Python 3.10+。先下载仓库并检查本机环境：
+Python 3.10+。把本仓库作为 Skill 放入你的代理支持的 skills 目录，或直接让代理读取 [SKILL.md](SKILL.md)。脚本管理状态和证据，不调用模型；专业建模由你的代理完成，不依赖另一个 28-skill 套件。
 
 ```bash
 git clone https://github.com/LysanderPhong/cumcm-triad-workflow.git
 cd cumcm-triad-workflow
-python3 scripts/doctor.py --output-dir ../doctor-result
+python3 scripts/triad.py start ../my-project --input /path/to/problem.pdf /path/to/attachments
+python3 scripts/triad.py status ../my-project
 ```
 
-`doctor.py` 只检查 NumPy、Matplotlib、XeLaTeX、ctex 和中文字体，并生成最小测试图、中文 PDF 和报告；它不会自动安装依赖。
-
-### 2. 创建项目并导入题面
-
-把题面 PDF 和附件放在项目外部，然后运行：
+代理从用户真实答复提取简短判断并登记：
 
 ```bash
-python3 scripts/triad.py start ../my-modeling-project \
-  --input problem.pdf attachments/
-python3 scripts/triad.py status ../my-modeling-project
+python3 scripts/triad.py record-human ../my-project --gate-id SCOPE \
+  --selected "按时间划分训练与验证集" --contribution "目标是评估未来预测，不能随机打乱时间。"
+python3 scripts/triad.py close-gate ../my-project --gate-id SCOPE
+python3 scripts/triad.py record-human ../my-project --gate-id ROUTE \
+  --selected "先跑可解释基线" --contribution "复杂模型只有在同口径验证中改善结果才保留。"
+python3 scripts/triad.py close-gate ../my-project --gate-id ROUTE
 ```
 
-初始化器会创建以下工作区：
+题意、假设、指标和预算写入这些真实决定即可，不另填风险卡。理由可选，不以字数判断实质贡献。
 
-- `raw/`：题面和附件的项目内副本；
-- `planning/decision_cards/`：人工决定卡；
-- `planning/risk_cards/`：逐子问题科学风险卡；
-- `logs/`：决定、运行、失败、审核、Claim 和事件台账；
-- `code/`、`results/`、`paper/`、`reviews/`、`compliance/`：执行和交付材料。
-
-导入会拒绝符号链接、重名文件和覆盖已有 `raw/` 文件。
-
-### 3. 通过启动门和选题门
-
-你先确认：题目、附件范围、比赛规则、三角色、可修改目录和时间起点。
-
-然后用决策卡记录选题和范围。核心建模门不能只回复“同意”或“A/B/C”，要写出自己的方向、假设、取舍或理由。
-
-示例：
+代理将代码放入项目 code/，使用 run 自动保存运行记录。输出使用新版本文件名；命令在项目目录运行，不经过 shell。题面附件和命令直接引用的脚本自动绑定；额外导入模块、外部数据等依赖使用可重复的 `--input-ref` 登记：
 
 ```bash
-python3 scripts/triad.py record-human ../my-modeling-project \
-  --gate-id START --gate-class CORE_MODELING \
-  --selected "先验证可解释基线" \
-  --contribution "我先用可解释基线检验变量关系，再决定是否增加非线性模型。" \
-  --rationale "先保留同口径基准，便于比较。" \
-  --evidence raw/problem.pdf
+python3 scripts/triad.py run ../my-project --run-id R1 --output results/metrics-v1.csv \
+  -- python3 code/model.py
+python3 scripts/triad.py record-claim ../my-project --claim-id C1 \
+  --text "主方法在固定验证集上降低误差；具体数值和口径见指标表。" \
+  --evidence results/metrics-v1.csv --run-id R1
+python3 scripts/triad.py review-packet ../my-project
 ```
 
-### 4. 为每个子问题填写科学风险卡
-
-复制 `templates/scientific_risk_card.md` 到项目的 `planning/risk_cards/`，每个子问题至少登记六类风险：
-
-- 假设；
-- 数据；
-- 识别性；
-- 敏感性；
-- 基线；
-- 越界或外推。
-
-你要确认哪些风险适用、允许声称什么、什么情况必须收窄结论或停门。未知不能直接填成“不适用”。
-
-### 5. 确认路线，执行建模
-
-在路线门确认 baseline、主方法、评价指标、预算、停止条件和独立复核方式。之后才让执行代理运行数据审计、模型代码、实验和稳健性检查。
-
-28-skill 套件可以在这里提供专业工作，例如：
-
-- `data-auditor-cleaner`：数据审计；
-- `method-selector`：方法筛选；
-- `python-model-code-generator` 或 `matlab-model-code-generator`：代码生成；
-- `robustness-checker`：稳健性检验；
-- `math-figure-generator`：图表生成；
-- `paper-section-writer`：论文写作。
-
-本 Skill 不替代这些技能，也不自动决定使用哪个模型。
-
-### 6. 独立审核和失败修复
-
-执行代理交付后，独立审核员读取必要的原始题面、决定和结果，返回四种结论之一：`PASS`、`REJECT`、`BLOCK`、`ESCALATE`。
+独立上下文读取题面、决定、代码和结果，按 [独立审核提示](templates/prompts/independent_review.md) 复核。这里的 context-id 仅用于记录，程序不能证明模型会话真的独立。
 
 ```bash
-python3 scripts/triad.py record-review ../my-modeling-project \
-  --gate-id MODEL --verdict PASS \
-  --context-id independent-review-001 \
-  --evidence results/q1_metrics.csv
+python3 scripts/triad.py record-review ../my-project --gate-id RESULTS --verdict PASS \
+  --context-id reviewer-session-1 --evidence results/metrics-v1.csv
+python3 scripts/triad.py close-gate ../my-project --gate-id RESULTS
 ```
 
-如果审核拒绝，必须保留原失败、生成新版本、重新审核。未关闭的 blocker 不允许关门或冻结。
+DRAFT Claim 可以重复登记同一 ID 来修订，日志保留每次版本。若需要逐条批准，可运行 approve-claim 并引用真实人工决定事件与独立 PASS 事件；默认最终签发覆盖经审核的主张，无需逐条额外审批。修改 Claim 的文字或证据后重新审核结果；只调整批准状态不会重复触发科学审核。
 
-需要打包审核材料时：
+## 论文、图表与交付
+
+正文根据实际子问题组织“任务、模型、求解、结果与检验、局限”。篇幅、摘要字数和图表数量由题目及用户要求决定，不设凑字数或每问图表配额。示例视觉配置见 [figure_style.json](templates/figure_style.json)，页面配置见 [paper_layout.json](templates/paper_layout.json)。
 
 ```bash
-python3 scripts/triad.py review-packet ../my-modeling-project
+python3 scripts/paper_review.py --paper ../my-project/paper/final.pdf \
+  --output-html ../my-project/reviews/paper_review.html
+python3 scripts/claim_check.py ../my-project
 ```
 
-默认生成 blind-review 包；需要检查来源链时使用 `--mode provenance-audit`。
+参考论文和 figure_manifest.json 均可选。自检结果是解析与写作提示，不代替真实页面检查。复跑报告和审核包会自动生成新文件名。
 
-### 7. 登记论文主张和证据链
-
-论文里的关键数字和结论登记到 `logs/claims.jsonl`。每条 Claim 必须关联：
-
-- 项目内真实证据文件；
-- 产生这些文件的成功运行；
-- 若已批准，还要关联人工决定和独立审核事件。
-
-运行检查：
+交付审核实际查看最终 PDF，并明确记录以下检查：
 
 ```bash
-python3 scripts/claim_check.py ../my-modeling-project
+python3 scripts/triad.py record-review ../my-project --gate-id DELIVERY --verdict PASS \
+  --context-id reviewer-session-2 --evidence paper/final.pdf \
+  --check rendered_pdf --check figures_tables --check references \
+  --check anonymity --check ai_disclosure --check supporting_files
+python3 scripts/triad.py close-gate ../my-project --gate-id DELIVERY
+python3 scripts/triad.py freeze ../my-project --version v1 \
+  --confirmation "我确认交付这一版，已核对结果、论文和支撑材料。"
 ```
 
-退出码 0 表示证据链没有发现断裂；退出码 2 表示缺失、失败、越界或未声明的引用。它不能证明数学命题本身正确。
+freeze 重新检查有效审核、运行、Claim 和 PDF，再保存 releases/v1/ 快照与指纹清单。PDF 文件头检查仅证明存在候选 PDF；实际缺字、溢出、图表和页面问题必须由交付审核查看。冻结不提交比赛材料。
 
-### 8. 写论文、做图和自查
+## 修复与继续
 
-论文完成后，先准备同方向优秀论文样本，再运行：
+故障只登记具体问题，不重复创建风险卡。close-failure 需要真实修复与复测文件；修复后的新产物重新审核。后来的拒绝使旧 PASS 失效。修改输入、代码或产物后，旧运行或审核不能用于冻结。
 
 ```bash
-python3 scripts/paper_review.py \
-  --paper paper/draft.md \
-  --reference references/good-paper.pdf \
-  --decision-log logs/human_decisions.jsonl \
-  --figure-manifest paper/figures/figure_manifest.json \
-  --output-html paper/paper_review.html
+python3 scripts/triad.py record-failure ../my-project --description "指标口径不一致"
+# 按返回的 failure_id，修复并取得复测证据后执行：
+python3 scripts/triad.py close-failure ../my-project FAILURE_ID \
+  --repair-ref code/model.py --evidence results/metrics-v2.csv
 ```
 
-HTML 页面用于检查结构、篇幅、表达深度、验证线索、套话、重复句式和证据不足的强结论。用户逐条决定是否修改。
-
-图表统一遵守 `references/visual_style.md` 和 `templates/figure_style.json`：低饱和色、统一字体字号、扁平风格、无阴影/3D/渐变，并按表达目的选择图表类型。
-
-这个工具不计算 AI 百分比，不自动改写论文，也不建议为了降低所谓 AI 率而删除真实 AI 使用披露。
-
-论文默认目标约 25 页，允许 20–30 页。每个子问题都要有自己的“问题分析 → 模型建立 → 模型求解 → 结果与检验 → 局限”闭环，不能把多道题的结果只压进一张总表。首页、中文大标题、正文层级、横线表格、参考文献和按问题拆分的支撑材料，按 [论文版式档案](references/paper_format_profile.md) 执行。页数超出时先删重复叙述和无信息装饰，不删关键推导、证据或限制。
-
-生成论文时使用 `templates/paper_layout.json` 作为版式合同；它是默认配置，不是对官方当年模板的替代。若官方模板与它冲突，以官方要求为准并在合规台账中记录调整。
-
-### 9. 合规、终审和冻结
-
-最后检查：
-
-- 当前年份官方论文格式；
-- AI 使用规定和真实披露；
-- 源码、附件、图表、引用和匿名信息；
-- 四个独立状态：官方提交资格、科学准备度、奖项竞争力评估、可选安全检查。
-
-所有前置门关闭、失败清零、独立审核通过、Claim 检查通过后，才可以冻结：
+新附件可用 ingest 导入；它保留题意和路线决定，将已有结果及交付批准失效。冻结后修改须另开工作版本：
 
 ```bash
-python3 scripts/triad.py close-gate ../my-modeling-project --gate-id COMPLIANCE
-python3 scripts/triad.py freeze ../my-modeling-project \
-  --confirmation "我确认冻结当前版本，已核对题面、证据、审核、论文和合规材料。"
+python3 scripts/triad.py reopen ../my-project ../my-project-v2
 ```
 
-## 你和 AI 的分工
+## 文件与兼容性
 
-| 事项 | 你 | 执行代理 | 独立审核员 |
-|---|---|---|---|
-| 题意、假设、路线和主张范围 | 决定 | 提供选项 | 挑战是否有依据 |
-| 数据、代码、实验和排版 | 批准范围 | 执行并记录 | 复算和抽查 |
-| 失败和修复 | 决定是否接受 | 修复并保留旧证据 | 复审 |
-| 最终冻结 | 签发 | 准备材料 | 确认没有未决阻塞 |
+只有 logs/events.jsonl 是权威记录；状态、故障与 Claim 都从事件生成，不再手动维护 project_state.json、十套专用台账或门注册表。运行控制台输出作为证据保存在 logs/，审核包在 reviews/，交付快照在 releases/。
 
-如果只有同一个 AI 上下文自查，状态必须写成 `SELF_REVIEW_ONLY`，不能冒充独立审核。
+这是 2.0 项目格式，旧版九门项目不原地迁移或覆盖。脚本会明确拒绝旧版目录；保留旧项目，在新目录试用，并按真实情况导入原始附件。旧的三套测试已由 [生命周期测试](validation/test_workflow.py) 替代。
 
-## 与 28-skill 套件的关系
+```bash
+python3 validation/test_workflow.py
+```
 
-28-skill 套件主要回答“这个阶段要生成和检查哪些专业产物”；本 Skill 主要回答“谁有决定权、谁不能自证、证据不够时什么时候停”。两者可以一起使用，也可以先只使用本 Skill 的项目骨架和门控脚本。
+可选工具：doctor.py 检查环境，anonym_scan.py 查找配置的身份线索，hash_check.py 核验已有指纹清单。它们按需求使用，不强迫开局先安装 XeLaTeX；可用自己的排版环境。
 
-## 常见误解
-
-- **不是**把真题丢进去就自动得到正确论文。题意、假设、模型路线和结论仍需人类负责。
-- **不是**有了审核脚本就代表数学正确。脚本只能发现证据、流程和文件问题。
-- **不是**自评分数或历史 Benchmark 通过就等于获奖能力。
-- **不是**通过一次最小环境检查就代表整篇论文可复现。
-- **不是**用优秀论文对比就可以复制它的句子、数字或结论。
-
-## 诚实边界
-
-| 内容 | 当前状态 |
-|---|---|
-| 决策入账、失败如实、数字可追溯、证据实测 | 【两轮验证】 |
-| 越权即停、完整三角色组织 | 【单轮验证】 |
-| 科学风险卡的历史风险来源 | 【两轮验证】 |
-| 风险卡动态生成和自动消费 | 【未验证】 |
-| Claim→证据→运行链的当前完整科学效果 | 【单轮验证】 |
-| 完整 A-H 冷启动、30 分钟 SLA、72 小时闭环 | 【未验证】 |
-| 第三套题跨题型通用性 | 【未验证】 |
-
-本 Skill 不保证获奖，也不输出 AI 百分比。正式比赛前必须核对当年官方规则和 AI 使用规定。
-
-## 参考资料
-
-- [SKILL.md](SKILL.md)：给 Codex 读取的入口协议；
-- [阶段门](references/stage_gates.md)；
-- [科学风险卡](references/scientific_risk_cards.md)；
-- [Claim 证据链](references/claim_evidence_run.md)；
-- [五条铁律](references/five_rules.md)；
-- [论文对比与写作自查](references/paper_comparison.md)；
-- [图表视觉规范](references/visual_style.md)；
-- [论文版式与篇幅档案](references/paper_format_profile.md)；
-- [论文版式配置](templates/paper_layout.json)；
-- [官方合规清单](references/official_compliance.md)；
-- [两个脱敏案例](examples/benchmark_01_lessons.md) 和 [B02 案例](examples/benchmark_02_case_study.md)。
-
-当前公开版本：[v1.0.0-rc.6](https://github.com/LysanderPhong/cumcm-triad-workflow/releases/tag/v1.0.0-rc.6)。欢迎用独立旧题测试，但请把测试结果与正式第三套题验证分开记录。
+[图表检查要点](references/visual_style.md) · [论文页面检查](references/paper_format_profile.md) · [官方合规检查](references/official_compliance.md)。比赛要求以适用的当年官方原文为准。本工具不保证数学正确或获奖，不计算 AI 百分比。
